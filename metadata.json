@@ -1,0 +1,5 @@
+{
+  "name": "Global Industrial Battery Health Analyzer",
+  "description": "Offline, rule-based, industrial-grade battery diagnostics platform compliant with IEC/IEEE standards. Supports multi-chemistry analysis (Lithium, Lead-Acid, Flow, Ni-Cd) and generates audit-ready engineering reports.",
+  "requestFramePermissions": []
+}

@@ -1,0 +1,95 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Oswald:wght@500;600&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-brand-100: #e0f2fe;
+    --color-brand-500: #0ea5e9;
+    --color-brand-600: #0284c7;
+    --color-sidebar-bg: #0f172a;
+    --color-industrial-bg: #0f172a;
+    --color-industrial-paper: #1e293b;
+  }
+
+  .dark {
+    --color-industrial-bg: #0b1120;
+    --color-industrial-paper: #1e293b;
+  }
+
+  body {
+    @apply antialiased text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-industrial-surface;
+    font-feature-settings: "cv11", "ss01";
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-display tracking-wide;
+  }
+}
+
+@layer components {
+  /* Commercial Grade UI Components */
+
+  .card {
+    @apply bg-white dark:bg-industrial-paper rounded-xl shadow-lg border border-slate-200 dark:border-industrial-border p-6 transition-all duration-300;
+  }
+
+  .card:hover {
+    @apply shadow-xl transform -translate-y-[2px];
+  }
+
+  .btn-primary {
+    @apply bg-brand-600 hover:bg-brand-500 text-white font-medium py-2 px-4 rounded-lg shadow-md transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-white font-medium py-2 px-4 rounded-lg transition-all;
+  }
+
+  .btn-outline {
+    @apply border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium py-2 px-4 rounded-lg transition-all;
+  }
+
+  .input-field {
+    @apply w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-4 py-2 focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none transition-all;
+  }
+
+  .badge {
+    @apply px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wider;
+  }
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-white/70 dark:bg-industrial-paper/70 backdrop-blur-md border border-white/20 shadow-xl;
+  }
+
+  .text-shadow {
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-slate-100 dark:bg-slate-900;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-400 dark:bg-slate-600 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-500 dark:bg-slate-500;
+}
