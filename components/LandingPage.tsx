@@ -8,18 +8,18 @@ interface LandingPageProps {
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({ onStart, onViewKnowledge }) => {
-  const { theme, setTheme } = useTheme();
+  useTheme(); // Theme context is used for global state
 
   return (
-    <div className="w-full relative animate-fade-in">
+    <div className="w-full relative animate-fade-in" style={{ backgroundColor: 'white' }}>
       
-      {/* Background Gradients */}
-      <div className="absolute top-0 inset-x-0 h-[600px] bg-gradient-to-b from-white to-transparent dark:from-white/5 dark:to-transparent pointer-events-none"></div>
-      <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-brand-500/10 rounded-full blur-3xl -mr-64 -mt-64 pointer-events-none"></div>
-      <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-blue-600/10 rounded-full blur-3xl -ml-32 -mb-32 pointer-events-none"></div>
+      {/* Background Gradients - Light mode uses subtle blue, dark mode uses white glow */}
+      <div className="absolute top-0 inset-x-0 h-[600px] bg-gradient-to-b from-blue-50/50 to-transparent dark:from-white/5 dark:to-transparent pointer-events-none"></div>
+      <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-brand-500/5 dark:bg-brand-500/10 rounded-full blur-3xl -mr-64 -mt-64 pointer-events-none"></div>
+      <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-blue-600/5 dark:bg-blue-600/10 rounded-full blur-3xl -ml-32 -mb-32 pointer-events-none"></div>
 
       {/* Hero Section */}
-      <div className="relative z-10 w-full max-w-5xl mx-auto px-6 pt-20 pb-32 text-center">
+      <div className="relative z-10 w-full max-w-5xl mx-auto px-6 pt-20 pb-32 text-center bg-white dark:bg-transparent">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-50/50 dark:bg-white/5 border border-brand-200 dark:border-white/10 text-brand-700 dark:text-brand-300 text-xs font-bold uppercase tracking-wider mb-8 backdrop-blur-sm animate-fade-in-up">
            <span className="flex h-2 w-2 relative">
              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75"></span>
@@ -35,7 +35,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStart, onViewKnowled
           </span>
         </h1>
         
-        <p className="text-xl md:text-2xl text-slate-700 dark:text-slate-300 mb-12 max-w-3xl mx-auto leading-relaxed animate-fade-in-up delay-200 font-medium">
+        <p 
+          className="text-xl md:text-2xl mb-12 max-w-3xl mx-auto leading-relaxed animate-fade-in-up delay-200"
+          style={{ color: '#1a1a1a' }}
+        >
           The comprehensive platform for IEEE compliant testing, predictive maintenance, and fleet-wide battery health monitoring.
         </p>
         
@@ -51,9 +54,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStart, onViewKnowled
           
           <button 
             onClick={onViewKnowledge}
-            className="group px-8 py-4 bg-white dark:bg-white/5 text-slate-700 dark:text-white font-bold text-lg rounded-xl border border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/10 transition-all hover:-translate-y-1 flex items-center gap-2 backdrop-blur-sm"
+            className="group px-8 py-4 bg-slate-800 dark:bg-white/10 text-white dark:text-white font-bold text-lg rounded-xl border border-slate-800 dark:border-white/20 hover:bg-slate-700 dark:hover:bg-white/20 transition-all hover:-translate-y-1 flex items-center gap-2 shadow-lg"
           >
-            <BookOpen className="w-5 h-5 text-slate-400 group-hover:text-brand-500 transition-colors" />
+            <BookOpen className="w-5 h-5 text-white" />
             Knowledge Base
           </button>
         </div>
@@ -83,12 +86,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStart, onViewKnowled
       </div>
 
       {/* Trust Signals */}
-      <div className="w-full border-y border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-white/[0.02] py-16">
+      <div className="w-full border-y border-slate-200 dark:border-white/5 bg-slate-100 dark:bg-white/[0.02] py-16">
          <div className="max-w-7xl mx-auto px-6">
-            <p className="text-center text-sm font-bold text-slate-600 dark:text-slate-300 uppercase tracking-widest mb-10">Trusted Standard Compliance</p>
-            <div className="flex flex-wrap justify-center gap-12 md:gap-20 grayscale hover:grayscale-0 transition-all duration-500">
+            <p className="text-center text-sm font-bold text-gray-800 dark:text-slate-300 uppercase tracking-widest mb-10">Trusted Standard Compliance</p>
+            <div className="flex flex-wrap justify-center gap-12 md:gap-20">
                {['IEEE-450', 'IEEE-1188', 'NERC PRC-005', 'IEC 60896'].map((std) => (
-                  <div key={std} className="text-2xl font-display font-bold text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                  <div key={std} className="text-2xl font-display font-bold text-gray-900 dark:text-slate-300 flex items-center gap-2">
                      <ShieldCheck className="w-6 h-6" />
                      {std}
                   </div>
@@ -103,7 +106,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStart, onViewKnowled
             <h2 className="text-3xl md:text-4xl font-display font-bold text-slate-900 dark:text-white mb-6">
                Engineered for Reliability
             </h2>
-            <p className="text-lg text-slate-700 dark:text-slate-300 font-medium">
+            <p className="text-lg text-slate-800 dark:text-slate-200 font-medium">
                Replacing manual spreadsheets with automated, audit-ready intelligence.
             </p>
          </div>
@@ -154,7 +157,7 @@ const FeatureCard = ({ icon, title, desc }: { icon: React.ReactNode, title: stri
       {icon}
     </div>
     <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-3">{title}</h3>
-    <p className="text-slate-700 dark:text-slate-300 leading-relaxed font-medium">{desc}</p>
+    <p className="text-slate-800 dark:text-slate-200 leading-relaxed font-medium">{desc}</p>
   </div>
 );
 

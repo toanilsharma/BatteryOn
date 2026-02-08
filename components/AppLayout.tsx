@@ -368,7 +368,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         <main 
             ref={mainContentRef}
             onScroll={handleScroll}
-            className="flex-1 overflow-x-hidden overflow-y-auto bg-slate-50/50 dark:bg-industrial-900/50 scroll-smooth relative"
+            className="flex-1 overflow-x-hidden overflow-y-auto bg-white dark:bg-industrial-900 scroll-smooth relative"
         >
             {/* Scroll To Top Button */}
             <button
