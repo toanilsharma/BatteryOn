@@ -5,13 +5,9 @@ import {
 } from 'lucide-react';
 import { Dashboard } from './components/Dashboard';
 import { ReportView } from './components/ReportView';
-import { KnowledgeBase } from './components/KnowledgeBase';
 import { LandingPage } from './components/LandingPage';
 import { AppLayout } from './components/AppLayout';
-import { FleetDashboard } from './components/FleetDashboard';
-import { ComplianceDashboard } from './components/ComplianceDashboard';
 import { AnalysisUpload } from './components/AnalysisUpload';
-import { RealTimeMonitor } from './components/RealTimeMonitor';
 import { Sitemap } from './components/Sitemap';
 import { AnalysisResult } from './types';
 
@@ -30,30 +26,14 @@ function AppContent() {
   // Mock user for now
   const user = { username: 'Demo User', role: 'Engineer' };
   
-  const [knowledgeTab, setKnowledgeTab] = useState<'HUB' | 'VRLA' | 'VLA' | 'NICD' | 'LIION' | 'FLOW' | 'SODIUM'>('HUB');
-
   const handleNavigate = (viewId: string) => {
-      if (viewId.startsWith('kb-')) {
-          setCurrentView('knowledge');
-          const tabMap: Record<string, 'HUB' | 'VRLA' | 'VLA' | 'NICD' | 'LIION' | 'FLOW' | 'SODIUM'> = {
-              'kb-vrla': 'VRLA',
-              'kb-vla': 'VLA',
-              'kb-liion': 'LIION',
-              'kb-nicd': 'NICD',
-              'kb-flow': 'FLOW',
-              'kb-sodium': 'SODIUM',
-              'kb-standards': 'HUB' // Fallback for now
-          };
-          setKnowledgeTab(tabMap[viewId] || 'HUB');
-      } else {
-          setCurrentView(viewId);
-      }
+      setCurrentView(viewId);
   };
 
   const renderContent = () => {
     switch (currentView) {
       case 'landing':
-        return <LandingPage onStart={() => handleNavigate('dashboard')} onViewKnowledge={() => handleNavigate('knowledge')} />;
+        return <LandingPage onStart={() => handleNavigate('dashboard')} />;
       case 'dashboard':
         return (
           <div className="space-y-6 animate-fade-in">
@@ -152,12 +132,6 @@ function AppContent() {
              )}
           </div>
         );
-      case 'monitoring':
-         return <RealTimeMonitor />;
-      case 'compliance':
-         return <ComplianceDashboard />;
-      case 'knowledge':
-        return <KnowledgeBase initialTab={knowledgeTab} />;
       case 'reports':
         // If we have a stored result, show report, otherwise show list/empty state
         return analysisResult ? (
@@ -177,8 +151,6 @@ function AppContent() {
         );
         case 'sitemap':
         return <Sitemap onNavigate={handleNavigate} />;
-      case 'fleet':
-          return <FleetDashboard />;
       case 'settings':
         // ... (Settings code remains same)
         return (
@@ -227,7 +199,7 @@ function AppContent() {
         return <Disclaimer />;
       default:
         // Fallback
-        return <LandingPage onStart={() => handleNavigate('dashboard')} onViewKnowledge={() => handleNavigate('knowledge')} />;
+        return <LandingPage onStart={() => handleNavigate('dashboard')} />;
     }
   };
 

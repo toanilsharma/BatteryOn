@@ -1,13 +1,12 @@
 import React from 'react';
-import { Shield, Activity, Zap, BookOpen, ArrowRight, BarChart3 } from 'lucide-react';
+import { Shield, Zap, ArrowRight, BarChart3 } from 'lucide-react';
 import { useTheme } from '../components/ThemeContext';
 
 interface LandingPageProps {
   onStart: () => void;
-  onViewKnowledge: () => void;
 }
 
-export const LandingPage: React.FC<LandingPageProps> = ({ onStart, onViewKnowledge }) => {
+export const LandingPage: React.FC<LandingPageProps> = ({ onStart }) => {
   useTheme(); // Theme context is used for global state
 
   return (
@@ -20,13 +19,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStart, onViewKnowled
 
       {/* Hero Section */}
       <div className="relative z-10 w-full max-w-5xl mx-auto px-6 pt-20 pb-32 text-center bg-white dark:bg-transparent">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-50/50 dark:bg-white/5 border border-brand-200 dark:border-white/10 text-brand-700 dark:text-brand-300 text-xs font-bold uppercase tracking-wider mb-8 backdrop-blur-sm animate-fade-in-up">
-           <span className="flex h-2 w-2 relative">
-             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75"></span>
-             <span className="relative inline-flex rounded-full h-2 w-2 bg-brand-500"></span>
-           </span>
-           v2.1 Enterprise Release
-        </div>
+
         
         <h1 className="text-5xl md:text-7xl font-display font-bold text-slate-900 dark:text-white mb-8 leading-[1.1] tracking-tight animate-fade-in-up delay-100">
           BatteryOn Intelligence <br />
@@ -51,38 +44,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStart, onViewKnowled
             <span>Start Analysis</span>
             <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
           </button>
-          
-          <button 
-            onClick={onViewKnowledge}
-            className="group px-8 py-4 bg-slate-800 dark:bg-white/10 text-white dark:text-white font-bold text-lg rounded-xl border border-slate-800 dark:border-white/20 hover:bg-slate-700 dark:hover:bg-white/20 transition-all hover:-translate-y-1 flex items-center gap-2 shadow-lg"
-          >
-            <BookOpen className="w-5 h-5 text-white" />
-            Knowledge Base
-          </button>
         </div>
 
-        {/* Hero Image Visual */}
-        <div className="mt-20 relative animate-fade-in-up delay-500 group max-w-4xl mx-auto">
-           <div className="absolute inset-0 bg-brand-500/30 blur-[100px] rounded-full pointer-events-none"></div>
-           <div className="relative rounded-2xl shadow-2xl border border-slate-200 dark:border-white/10 overflow-hidden group-hover:scale-[1.01] transition-transform duration-500">
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent z-10 opactiy-60"></div>
-              <img 
-                 src="/assets/images/dashboard-hero.svg" 
-                 alt="Advanced Analytics Dashboard" 
-                 className="w-full h-auto object-cover opacity-90 hover:opacity-100 transition-opacity"
-              />
-              {/* Overlay Badge */}
-              <div className="absolute bottom-6 left-6 z-20 flex items-center gap-3 bg-white/10 backdrop-blur-md p-3 rounded-lg border border-white/20">
-                 <div className="w-10 h-10 rounded bg-brand-500 flex items-center justify-center shadow-lg shadow-brand-500/50">
-                    <Activity className="w-6 h-6 text-white" />
-                 </div>
-                 <div className="text-left">
-                    <div className="text-xs text-brand-200 font-bold uppercase tracking-wider">System Status</div>
-                    <div className="text-white font-bold text-sm">Real-time Monitoring Active</div>
-                 </div>
-              </div>
-           </div>
-        </div>
+
       </div>
 
       {/* Trust Signals */}
@@ -119,8 +83,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStart, onViewKnowled
             />
             <FeatureCard 
                icon={<Shield className="w-6 h-6 text-green-500" />}
-               title="Compliance Verified"
-               desc="Automated checks against international safety standards ensuring 100% audit-readiness for your facility."
+               title="Reliability Focused"
+               desc="Ensure 100% uptime with advanced health monitoring and risk assessment tools designed for critical infrastructure."
             />
             <FeatureCard 
                icon={<BarChart3 className="w-6 h-6 text-brand-500" />}
@@ -135,7 +99,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStart, onViewKnowled
       <div className="w-full bg-gradient-to-r from-slate-900 to-slate-800 py-12 px-6 text-center text-white rounded-2xl shadow-xl mx-auto max-w-6xl mb-12">
          <h2 className="text-3xl font-display font-bold mb-4">Start your diagnostic session</h2>
          <p className="text-slate-300 mb-8 max-w-xl mx-auto">
-            Access the Analysis Engine to process battery data or check the Knowledge Base for maintenance standards.
+            Access the Analysis Engine to process battery data and generate engineering reports.
          </p>
          <div className="flex justify-center gap-4">
             <button 

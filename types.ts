@@ -36,6 +36,7 @@ export interface ChemistryProfile {
   stdDevLimit: number; // Volts
   allowedImbalance: number; // % or Volts
   tempCoeff: number; // mV/°C per cell
+  specificGravityNominal?: number; // e.g. 1.215
   standards: string[];
 }
 
@@ -48,7 +49,10 @@ export interface CellInput {
   cycleCount?: number;
   impedanceOhms?: number;
   baselineOhms?: number;
+  specificGravity?: number; // 1.200 - 1.300 typical for Pb-Acid
 }
+
+export type DischargeRate = 'C10' | 'C8' | 'C5' | 'C3' | 'C1' | 'Custom';
 
 export interface AssetMetadata {
   siteId: string;
@@ -58,6 +62,9 @@ export interface AssetMetadata {
   chemistryId: string;
   nominalCapacityAh: number; // Bank level nominal
   measuredCapacityAh?: number; // Bank level measured
+  dischargeCurrent?: number; // Amps
+  testDurationMins?: number; // Minutes
+  dischargeRate?: DischargeRate;
 }
 
 export interface AnalysisFinding {
@@ -93,6 +100,12 @@ export interface AnalysisResult {
     zScoreMax: number;
     totalVoltage: number;
     avgCapacityPct?: number;
+    
+    // SG Stats (if available)
+    minSG?: number;
+    maxSG?: number;
+    avgSG?: number;
+    sgSpread?: number;
   };
   cells: (CellInput & { zScore: number; status: 'OK' | 'Warn' | 'Fail' })[];
   healthScore: number; // 0-100

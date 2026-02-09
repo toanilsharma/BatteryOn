@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { Upload, FileText, AlertCircle, ArrowRight } from 'lucide-react';
-import { AnalysisResult, HealthGrade, ChemistryType } from '../types';
+import { AnalysisResult, ChemistryType, CellInput, DischargeRate } from '../types';
+import { analyzeBattery } from './AnalysisEngine';
+import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 
 interface AnalysisUploadProps {
   onAnalysisComplete: (result: AnalysisResult) => void;
@@ -11,21 +14,54 @@ export const AnalysisUpload: React.FC<AnalysisUploadProps> = ({ onAnalysisComple
   const [chemistryType, setChemistryType] = useState<ChemistryType>(ChemistryType.LeadAcid_VRLA_AGM);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  const [isDragOver, setIsDragOver] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  /* State for Manual Entry */
+  const [entryMode, setEntryMode] = useState<'upload' | 'manual'>('upload');
+  const [manualCells, setManualCells] = useState<CellInput[]>([]);
+  const [numCells, setNumCells] = useState<number>(10);
+  const [nominalCapacity, setNominalCapacity] = useState<number>(100);
+  
+  // New State for C-Rate
+  const [dischargeRate, setDischargeRate] = useState<DischargeRate>('C10');
+  const [dischargeAmps, setDischargeAmps] = useState<number>(10);
+  const [durationMins, setDurationMins] = useState<number>(600);
 
   /* State for rich processing animation */
   const [processingStep, setProcessingStep] = useState(0);
+  /* State for Upload Mode */
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   const processingSteps = [
-    "Uploading data...",
+    "Reading file data...",
+    "Parsing cell values...", 
     "Identify Chemistry Signature...", 
     "Analyzing Voltage Spread...", 
-    "Correlating Impedance Data...",
     "Generating Engineering Report..."
   ];
 
-  /* Handlers (Drag/Drop/File) remain the same, just calling simulateProcessing */
-  
+  /* Param Handlers */
+  const handleRateChange = (rate: string) => {
+      setDischargeRate(rate as DischargeRate);
+      if (rate === 'Custom') return;
+
+      const c = parseInt(rate.replace('C', ''));
+      if (!isNaN(c)) {
+          setDischargeAmps(nominalCapacity / c);
+          setDurationMins(c * 60);
+      }
+  };
+
+  const handleCapacityChange = (val: number) => {
+      setNominalCapacity(val);
+      if (dischargeRate !== 'Custom') {
+          const c = parseInt(dischargeRate.replace('C', ''));
+          if (!isNaN(c)) setDischargeAmps(val / c);
+      }
+  };
+
+
+  /* Upload Handlers */
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(true);
@@ -41,7 +77,7 @@ export const AnalysisUpload: React.FC<AnalysisUploadProps> = ({ onAnalysisComple
     setIsDragOver(false);
     const files = e.dataTransfer.files;
     if (files && files.length > 0) {
-      simulateProcessing(files[0]);
+      processFile(files[0]);
     }
   };
 
@@ -52,266 +88,199 @@ export const AnalysisUpload: React.FC<AnalysisUploadProps> = ({ onAnalysisComple
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
-      simulateProcessing(files[0]);
+      processFile(files[0]);
     }
   };
 
-  const simulateProcessing = (file?: File) => {
+  /* File Processing Logic */
+  const processFile = async (file: File) => {
     setUploading(true);
+    setError(null);
     setProcessingStep(0);
 
-    // Simulate progress steps
-    const interval = setInterval(() => {
-       setProcessingStep(prev => {
-         if (prev >= processingSteps.length - 1) {
-            clearInterval(interval);
-            return prev;
-         }
-         return prev + 1;
-       });
-    }, 800);
-
-    setTimeout(() => {
-        clearInterval(interval);
-        const isCapacity = analysisType === 'capacity';
-        const isImpedance = analysisType === 'impedance';
-        
-        let nominalVoltage = 2.0;
-        let floatVoltage = 2.25;
-        let baseImpedance = 0.35;
-        
-        // Chemistry Specific Logic
-        if (chemistryType === ChemistryType.LFP) {
-           nominalVoltage = 3.2;
-           floatVoltage = 3.35;
-           baseImpedance = 0.25; // Lower internal resistance usually
-        } else if (chemistryType === ChemistryType.NMC) {
-           nominalVoltage = 3.7;
-           floatVoltage = 4.2;
-           baseImpedance = 0.20;
-        } else if (chemistryType === ChemistryType.NiCd) {
-           nominalVoltage = 1.2;
-           floatVoltage = 1.4;
-           baseImpedance = 0.5;
+    try {
+        let rawData: any[] = [];
+        if (file.name.endsWith('.csv')) {
+            rawData = await parseCSV(file);
+        } else if (file.name.match(/\.xls|xlsx$/)) {
+            rawData = await parseExcel(file);
+        } else {
+            throw new Error("Unsupported file format. Please use CSV or Excel.");
         }
 
-        // Generate Mock Discharge Curve for Capacity Tests
-        let dischargeCurve: { timeMinutes: number; voltage: number }[] | undefined;
-        
-        if (isCapacity) {
-           dischargeCurve = [];
-           const duration = 180; // 3 hours
-           const points = 20;
-           for (let i = 0; i <= points; i++) {
-              const time = Math.round((i / points) * duration);
-              // Simulation: Slow drop then "knee" drop at the end
-              const progress = i / points;
-              const drop = progress < 0.8 
-                 ? progress * 0.1  // Slow drop
-                 : 0.1 + ((progress - 0.8) * 1.5); // Fast drop (Coupe de Fouet / Knee)
-              
-              dischargeCurve.push({
-                 timeMinutes: time,
-                 voltage: nominalVoltage * 40 * (1 - drop) // String voltage
-              });
-           }
-        }
+        setProcessingStep(1); 
 
-        // 1. Generate Cells First
-        const cells = Array.from({ length: 40 }, (_, i) => {
-            const targetVoltage = isCapacity ? (nominalVoltage - 0.2) : floatVoltage; 
-            let voltage = targetVoltage + (Math.random() * 0.05 - 0.025);
-            let impedance = baseImpedance + (Math.random() * (baseImpedance * 0.4)); // 40% variance
-            
-            // Simulation: Force some specific failures to demonstrate the UI
-            if (i === 12 || i === 29) { // Critical Cells
-               voltage = isCapacity ? nominalVoltage * 0.7 : floatVoltage - 0.5; // Collapsed cell
-               impedance = baseImpedance * 3.5; // High resistance (Open/Dry)
-            }
-            if (i === 5 || i === 33) { // Warning Cells
-               voltage = isCapacity ? nominalVoltage * 0.85 : floatVoltage - 0.15;
-               impedance = baseImpedance * 1.6; 
-            }
+        const parsedCells: CellInput[] = rawData.map((row, index) => {
+            const cellId = row['Cell ID'] || row['Cell'] || row['ID'] || row['No'] || (index + 1);
+            const voltage = parseFloat(row['Voltage'] || row['V'] || row['Volts'] || row['Reading']);
+            const impedance = parseFloat(row['Impedance'] || row['Internal Resistance'] || row['Res'] || row['Ohm'] || row['R'] || '0');
+            const temp = parseFloat(row['Temperature'] || row['Temp'] || row['T'] || '25');
+            const measuredAh = parseFloat(row['Capacity'] || row['Ah'] || row['Measured Ah'] || '0');
 
-            // Determine Status (Logic applies to ALL modes now)
-            let status: 'OK' | 'Warn' | 'Fail' = 'OK';
-            
-            if (isImpedance) {
-                if (impedance > baseImpedance * 2.0) status = 'Fail';
-                else if (impedance > baseImpedance * 1.5) status = 'Warn';
-            } else if (isCapacity) {
-                if (voltage < nominalVoltage * 0.8) status = 'Fail';
-                else if (voltage < nominalVoltage * 0.9) status = 'Warn';
-            } else {
-                // Standard Health Mode
-                if (voltage < floatVoltage - 0.25) status = 'Fail';
-                else if (voltage < floatVoltage - 0.1) status = 'Warn';
-            }
+            if (isNaN(voltage)) return null;
 
             return {
-                cellId: i + 1,
+                cellId: cellId,
                 voltage: voltage,
-                impedanceOhms: isImpedance ? impedance : undefined, 
-                temperature: 24 + (Math.random() * 3),
-                measuredAh: isCapacity ? (85 + Math.random() * 10) : undefined, 
-                ratedAh: 100,
-                status: status,
-                zScore: status === 'OK' ? (Math.random() * 1.5 - 0.75) : (status === 'Fail' ? -3.5 : -1.8)
-            };
-        });
+                impedanceOhms: impedance > 0 ? impedance : undefined,
+                temperature: temp,
+                measuredAh: measuredAh > 0 ? measuredAh : undefined,
+                ratedAh: 100
+            } as CellInput;
+        }).filter(c => c !== null) as CellInput[];
 
-        // 2. Calculate Advanced Stats
-        const voltages = cells.map(c => c.voltage);
-        const minV = Math.min(...voltages);
-        const maxV = Math.max(...voltages);
-        const step = (maxV - minV) / 5;
-        const histogram = Array.from({length: 5}, (_, i) => {
-           const start = minV + (i * step);
-           const end = start + step;
-           const count = voltages.filter(v => v >= start && v < end).length;
-           return { range: `${start.toFixed(2)}-${end.toFixed(2)}V`, count };
-        });
+        if (parsedCells.length === 0) throw new Error("No valid cell data found.");
 
-        let rul = 5.0; // Years
-        if (isCapacity) {
-           const avgCap = cells.reduce((a, b) => a + (b.measuredAh || 0), 0) / cells.length;
-           const healthPct = avgCap / 100; 
-           rul = Math.max(0, (healthPct - 0.8) * 25); 
-        } else {
-            const badCount = cells.filter(c => c.status !== 'OK').length;
-            rul = Math.max(0, 5 - (badCount * 0.5));
+        setProcessingStep(3);
+
+        const meta = {
+            siteId: 'Imported Site',
+            assetId: file.name.split('.')[0],
+            operator: 'User',
+            date: new Date().toISOString(),
+            chemistryId: chemistryType,
+            nominalCapacityAh: nominalCapacity,
+            dischargeRate: analysisType === 'capacity' ? dischargeRate : undefined
+        };
+        // Add optional fields
+        if (analysisType === 'capacity') {
+            Object.assign(meta, {
+                dischargeCurrent: dischargeAmps,
+                testDurationMins: durationMins
+            });
         }
 
-        // 3. Financial Risk (Calculations Removed)
-        // const failCount = cells.filter(c => c.status === 'Fail').length;
-        // const warnCount = cells.filter(c => c.status === 'Warn').length;
+        const profile = getProfile(chemistryType);
+        const result = analyzeBattery(parsedCells, meta, profile);
 
-        // 4. Construct Final Object
-        const mockResult: AnalysisResult = {
-            id: 'AN-2024-' + Math.floor(Math.random() * 1000), 
-            assetId: file ? file.name.split('.')[0] : 'UPS-Bank-Alpha',
-            timestamp: new Date().toISOString(),
+        setProcessingStep(4);
+        setTimeout(() => {
+            setUploading(false);
+            onAnalysisComplete(result);
+        }, 1000);
 
-            siteId: 'DataCenter-NYC-01',
-            stringId: 'String-A',
-            chemistry: chemistryType, // Use selected chemistry
-            healthScore: isCapacity ? 72 : (isImpedance ? 65 : 85),
-            grade: isCapacity ? HealthGrade.Warning : (isImpedance ? HealthGrade.Warning : HealthGrade.Good), 
-            dischargeCurve: dischargeCurve, // Add the curve data
-            cells: cells,
-            stats: {
-                meanVoltage: floatVoltage,
-                medianVoltage: floatVoltage,
-                stdDev: 0.008,
-                minVoltage: floatVoltage - 0.1,
-                maxVoltage: floatVoltage + 0.1,
-                deltaV: 0.08,
-                totalVoltage: floatVoltage * 40,
-                zScoreMax: 2.5
-            },
-            compliance: {
-                standards: ['IEEE-1188', 'NERC PRC-005'],
-                compliant: !isCapacity && !isImpedance 
-            },
-            advancedStats: {
-                histogram,
-                estimatedRUL: Number(rul.toFixed(1)),
-                // financialRisk removed
-                // currency removed
-                replacementDeadline: new Date(Date.now() + (rul * 365 * 24 * 60 * 60 * 1000)).toISOString()
-            },
-            findings: []
+    } catch (err: any) {
+        setError(err.message || "Failed to process file");
+        setUploading(false);
+    }
+  };
+
+  const parseCSV = (file: File): Promise<any[]> => {
+    return new Promise((resolve, reject) => {
+        Papa.parse(file, {
+            header: true,
+            skipEmptyLines: true,
+            complete: (results) => resolve(results.data),
+            error: (error) => reject(error)
+        });
+    });
+  };
+
+  const parseExcel = (file: File): Promise<any[]> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const data = e.target?.result;
+                const workbook = XLSX.read(data, { type: 'binary' });
+                const sheetName = workbook.SheetNames[0];
+                const sheet = workbook.Sheets[sheetName];
+                const json = XLSX.utils.sheet_to_json(sheet);
+                resolve(json);
+            } catch (error) {
+                reject(error);
+            }
+        };
+        reader.onerror = (error) => reject(error);
+        reader.readAsBinaryString(file);
+    });
+  };
+    
+  /* Shared Helper */
+  const getProfile = (type: ChemistryType) => {
+        let nominal = 2.0;
+        let floatMax = 2.27; let floatMin = 2.18; let dischargeEnd = 1.75;
+        if (type === ChemistryType.LFP) { nominal = 3.2; floatMax = 3.45; floatMin = 3.3; dischargeEnd = 2.5; }
+        else if (type === ChemistryType.NiCd) { nominal = 1.2; floatMax = 1.45; floatMin = 1.35; dischargeEnd = 1.0; }
+        
+        return {
+            id: type, name: type, nominalVoltage: nominal, floatMin, floatMax, dischargeEnd,
+            stdDevLimit: 0.02 * nominal, allowedImbalance: 0.05, tempCoeff: -3,
+            standards: ['IEEE-1188', 'USER-INPUT']
+        };
+  };
+
+  /* Manual Entry Handlers */
+  const initializeManualGrid = () => {
+      const cells: CellInput[] = Array.from({ length: numCells }, (_, i) => ({
+          cellId: i + 1,
+          voltage: 2.0, // Default nominal
+          temperature: 25,
+          impedanceOhms: 0,
+          measuredAh: 0,
+          ratedAh: 100
+      }));
+      setManualCells(cells);
+  };
+
+  // Initialize on mount or count change
+  React.useEffect(() => {
+     if (manualCells.length === 0) initializeManualGrid();
+  }, []);
+
+  const handleCellChange = (index: number, field: keyof CellInput, value: string) => {
+      const newCells = [...manualCells];
+      if (field === 'cellId') {
+          newCells[index] = { ...newCells[index], [field]: value };
+      } else {
+          newCells[index] = { ...newCells[index], [field]: parseFloat(value) || 0 };
+      }
+      setManualCells(newCells);
+  };
+
+  const handleManualAnalyze = () => {
+      setUploading(true);
+      setProcessingStep(0);
+      
+      try {
+        // Validate
+        const validCells = manualCells.filter(c => c.voltage > 0);
+        if (validCells.length === 0) throw new Error("Please enter valid voltage data.");
+
+        setProcessingStep(2); // Skip parsing reqs
+        
+        // Prepare Metadata
+        const meta = {
+            siteId: 'Manual Entry Site',
+            assetId: 'Manual Bank 01',
+            operator: 'User',
+            date: new Date().toISOString(),
+            chemistryId: chemistryType,
+            nominalCapacityAh: nominalCapacity,
+            dischargeRate: analysisType === 'capacity' ? dischargeRate : undefined,
+            dischargeCurrent: analysisType === 'capacity' ? dischargeAmps : undefined,
+            testDurationMins: analysisType === 'capacity' ? durationMins : undefined
         };
 
-        
-        // Analysis Logic: Expert Findings Generation
-        if (isCapacity) {
-             const chemStandards = chemistryType.includes('Lead') ? ['IEEE-1188-2005 (VRLA)', 'NERC PRC-005-6'] 
-                : chemistryType.includes('Li') ? ['NFPA 855', 'UL 1973'] 
-                : ['IEEE-1106-2015 (Ni-Cd)'];
+        const profile = getProfile(chemistryType);
+        const result = analyzeBattery(validCells, meta, profile);
 
-            mockResult.findings.push({
-                severity: 'Critical',
-                finding: 'String capacity at 82% of rated (Failed)',
-                risk: 'Backup time reduced by 15 minutes. System cannot support full load duration.',
-                recommendationShort: 'Schedule battery replacement',
-                recommendationLong: 'Capacity test indicates entire string has degraded below 85% threshold. IEEE recommendation is immediate replacement planning.',
-                standardRef: 'IEEE-1188 Sec 6.3',
-                // Expert Fields
-                shortTermActions: [
-                   "Reduce load on UPS String A instantly if possible.",
-                   "Verify generator start reliability (10-second crank test).",
-                   "Increase room cooling to 20°C to slow further degradation."
-                ],
-                longTermActions: [
-                   "Procure replacement string (Lead-Time: 4-6 weeks).",
-                   "Budget for full bank replacement ($45k est).",
-                   "Review sizing calculations for future load growth."
-                ],
-                precautions: [
-                   "DO NOT boost charge - risk of thermal runaway in aged cells.",
-                   "High internal resistance present - arc flash energy elevated."
-                ],
-                reliabilityImpact: "CRITICAL: n-1 redundancy lost. Site is vulnerable to utility outage > 10 mins.",
-                globalStandards: chemStandards
-            });
-        } else if (isImpedance) {
-             const isLead = chemistryType.includes('Lead');
-             const isLi = chemistryType.includes('Li');
-             
-             const specificFinding = isLead 
-                ? 'High internal resistance (>50% baseline) indicates advanced sulfation or dry-out.' 
-                : isLi 
-                ? 'Cell impedance mismatch signals individual cell aging or BMS balancing failure.'
-                : 'Carbonation of electrolyte likely causing high resistance.';
+        setProcessingStep(4);
+        setTimeout(() => {
+            setUploading(false);
+            onAnalysisComplete(result);
+        }, 1000);
 
-             mockResult.findings.push({
-                severity: 'Warning',
-                finding: 'High Impedance detected in Block 3 (Cells 12, 29)',
-                risk: 'Potential open-circuit failure under load (High V-drop).',
-                recommendationShort: isLead ? 'Check connection torque & retorque' : 'Check BMS balancing cables',
-                recommendationLong: `Cells show significant deviation. ${specificFinding}`,
-                standardRef: isLead ? 'IEEE-1188 Sec 5' : 'OEM Manual',
-                shortTermActions: [
-                   "Verify torque on inter-cell connectors (11 Nm).",
-                   "Perform micro-ohm resistance test on connections.",
-                   "Check for visible corrosion or post-seal leaks."
-                ],
-                longTermActions: [
-                   "Perform partial discharge test (1 min) to verify load handling.",
-                   "Schedule specific cell replacement if re-torque fails."
-                ],
-                precautions: [
-                   "Use insulated tools (1000V rated).",
-                   "Wear Arc Flash PPE (Cat 2 minimum)."
-                ],
-                reliabilityImpact: "MODERATE: String can support load but voltage dip may trip inverter early.",
-                globalStandards: isLead ? ['IEEE-1188', 'IEC-60896'] : ['UL-1973']
-            });
-        } else {
-             // Standard Health Findings
-             mockResult.findings.push({
-                severity: 'Warning',
-                finding: 'Voltage Spread Exceeds Limits (>50mV)',
-                risk: 'Uneven charging - some cells undercharged (sulfation), others overcharged (gassing).',
-                recommendationShort: 'Perform Equalize Charge',
-                recommendationLong: 'Identify pilot cells and perform 24h equalize charge at 2.35Vpc (Lead-Acid) or check BMS balancing (Li-Ion).',
-                standardRef: 'NERC PRC-005',
-                shortTermActions: ["Initiate 24-hour equalize charge cycle.", "Check HVAC output near Rack 3 (thermal gradient?)."],
-                longTermActions: ["Install continuous battery monitoring system (BMS)."],
-                precautions: ["Ensure H2 gas detection system is functional during equalize."],
-                reliabilityImpact: "LOW: Long term life reduction if untreated.",
-                globalStandards: ['IEEE-450', 'NERC PRC-005']
-             });
-        }
-
-        setUploading(false);
-        onAnalysisComplete(mockResult as unknown as AnalysisResult); 
-    }, 4000); 
+      } catch (err: any) {
+          setError(err.message);
+          setUploading(false);
+      }
   };
+
 
   return (
     <div className="space-y-6">
+      
       {/* 1. Analysis Mode Selector */}
       <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-2">1. Select Analysis Mode</h3>
       <div className="grid grid-cols-3 gap-4 mb-6">
@@ -353,84 +322,272 @@ export const AnalysisUpload: React.FC<AnalysisUploadProps> = ({ onAnalysisComple
         ))}
       </div>
 
-      <div 
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        className={`border-2 border-dashed rounded-xl p-12 text-center transition-all duration-200 ${
-          isDragOver 
-            ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/20' 
-            : 'border-slate-300 dark:border-industrial-600 hover:border-brand-400'
-        }`}
-      >
-        <div className="flex flex-col items-center justify-center gap-4">
-           {uploading ? (
-             <div className="space-y-4 animate-fade-in w-full max-w-xs mx-auto">
-               <div className="flex justify-between text-xs font-bold text-slate-500 uppercase tracking-widest">
-                  <span>Processing...</span>
-                  <span>{Math.round(((processingStep + 1) / processingSteps.length) * 100)}%</span>
-               </div>
-               <div className="w-full bg-slate-200 dark:bg-industrial-700 rounded-full h-2 overflow-hidden">
-                  <div 
-                    className="bg-brand-600 h-full rounded-full transition-all duration-500 ease-out"
-                    style={{ width: `${((processingStep + 1) / processingSteps.length) * 100}%` }}
-                  ></div>
-               </div>
-               <div className="text-sm font-medium text-slate-700 dark:text-slate-300 h-6">
-                  {processingSteps[processingStep]}
-               </div>
-             </div>
-           ) : (
+       {/* 3. Test Configuration (New Shared Section) */}
+      <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-2">3. Test Configuration</h3>
+      <div className="bg-slate-50 dark:bg-industrial-800 p-4 rounded-lg border border-slate-200 dark:border-industrial-700 mb-8 grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 block">Rated Capacity (Ah)</label>
+              <input 
+                type="number" 
+                value={nominalCapacity} 
+                onChange={(e) => handleCapacityChange(parseFloat(e.target.value) || 100)}
+                className="w-full px-3 py-2 border rounded-md font-bold text-slate-700"
+              />
+          </div>
+          
+          {analysisType === 'capacity' && (
              <>
-               <div className="p-4 bg-slate-100 dark:bg-industrial-800 rounded-full">
-                  <Upload className="w-8 h-8 text-slate-400 dark:text-slate-300" />
-               </div>
-               <div>
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">Upload Battery Data</h3>
-                  <p className="text-slate-600 dark:text-slate-300 mt-1 font-medium">Drag and drop your .csv, .xls, or .fluke files here</p>
-               </div>
-               <button 
-                 onClick={handleManualUpload}
-                 className="px-6 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg font-bold transition-colors shadow-lg shadow-brand-900/20"
-               >
-                 Browse Files
-               </button>
+                <div>
+                   <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 block">Test Rating (C-Rate)</label>
+                   <select 
+                      value={dischargeRate} 
+                      onChange={(e) => handleRateChange(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-md font-bold text-slate-700 bg-white dark:bg-industrial-700 dark:text-white"
+                   >
+                      <option value="C10">C10 (10 Hours)</option>
+                      <option value="C8">C8 (8 Hours)</option>
+                      <option value="C5">C5 (5 Hours)</option>
+                      <option value="C3">C3 (3 Hours)</option>
+                      <option value="C1">C1 (1 Hour)</option>
+                      <option value="Custom">Custom</option>
+                   </select>
+                </div>
+                <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 block">Discharge Current (A)</label>
+                    <input 
+                      type="number" 
+                      step="0.1"
+                      value={dischargeAmps} 
+                      onChange={(e) => { setDischargeAmps(parseFloat(e.target.value) || 0); setDischargeRate('Custom'); }}
+                      className="w-full px-3 py-2 border rounded-md font-bold text-slate-700"
+                    />
+                </div>
+                <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 block">Duration (min)</label>
+                    <input 
+                      type="number" 
+                      value={durationMins} 
+                      onChange={(e) => { setDurationMins(parseFloat(e.target.value) || 0); setDischargeRate('Custom'); }}
+                      className="w-full px-3 py-2 border rounded-md font-bold text-slate-700"
+                    />
+                </div>
              </>
-           )}
-        </div>
+          )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-         <div className="p-4 rounded-lg bg-orange-50 dark:bg-orange-900/10 border border-orange-100 dark:border-orange-900/30 flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-orange-600 dark:text-orange-400 shrink-0 mt-0.5" />
-            <div>
-               <h4 className="font-bold text-orange-900 dark:text-orange-300 text-sm">Requirements</h4>
-               <p className="text-xs text-orange-800 dark:text-orange-400 mt-1">
-                  • Required: Cell ID, Voltage (V)<br/>
-                  {analysisType === 'capacity' && <span>• Required: Discharge Current, Start/End Time<br/></span>}
-                  {analysisType === 'impedance' && <span>• Required: Ohmic Value (mΩ/µΩ)<br/></span>}
-                  • Max file size: 25MB
-               </p>
-            </div>
-         </div>
-         <div className="p-4 rounded-lg bg-slate-50 dark:bg-industrial-800 border border-slate-200 dark:border-industrial-700 flex items-center justify-between group cursor-pointer hover:border-brand-500 transition-colors">
-            <div className="flex items-center gap-3">
-               <FileText className="w-5 h-5 text-slate-400" />
-               <div className="text-sm">
-                  <p className="font-bold text-slate-700 dark:text-slate-200">Download Template</p>
-                  <p className="text-slate-500 text-xs">Excel Spreadsheet (.xlsx)</p>
-               </div>
-            </div>
-            <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-brand-500" />
-         </div>
+      {/* Top Toggle */}
+      <div className="flex justify-center mb-8">
+          <div className="bg-slate-100 dark:bg-industrial-800 p-1 rounded-lg inline-flex shadow-inner">
+              <button 
+                onClick={() => setEntryMode('upload')}
+                className={`px-6 py-2 rounded-md text-sm font-bold transition-all ${entryMode === 'upload' ? 'bg-white dark:bg-industrial-700 text-brand-600 dark:text-brand-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'}`}
+              >
+                  File Upload
+              </button>
+              <button 
+                onClick={() => setEntryMode('manual')}
+                className={`px-6 py-2 rounded-md text-sm font-bold transition-all ${entryMode === 'manual' ? 'bg-white dark:bg-industrial-700 text-brand-600 dark:text-brand-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'}`}
+              >
+                  Manual Entry
+              </button>
+          </div>
       </div>
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        className="hidden" 
-        onChange={handleFileChange} 
-        accept=".csv,.xls,.xlsx,.fluke"
-      />
+
+      {/* CONTENT AREA BASED ON MODE */}
+      {entryMode === 'upload' ? (
+        <>
+            <div 
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className={`border-2 border-dashed rounded-xl p-12 text-center transition-all duration-200 ${
+                isDragOver 
+                    ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/20' 
+                    : 'border-slate-300 dark:border-industrial-600 hover:border-brand-400'
+                }`}
+            >
+                <div className="flex flex-col items-center justify-center gap-4">
+                {uploading ? (
+                    <div className="space-y-4 animate-fade-in w-full max-w-xs mx-auto">
+                        <div className="flex justify-between text-xs font-bold text-slate-500 uppercase tracking-widest">
+                            <span>Processing...</span>
+                            <span>{Math.round(((processingStep + 1) / processingSteps.length) * 100)}%</span>
+                        </div>
+                        <div className="w-full bg-slate-200 dark:bg-industrial-700 rounded-full h-2 overflow-hidden">
+                            <div 
+                                className="bg-brand-600 h-full rounded-full transition-all duration-500 ease-out"
+                                style={{ width: `${((processingStep + 1) / processingSteps.length) * 100}%` }}
+                            ></div>
+                        </div>
+                        <div className="text-sm font-medium text-slate-700 dark:text-slate-300 h-6">
+                            {processingSteps[processingStep]}
+                        </div>
+                    </div>
+                ) : (
+                    <>
+                        <div className="p-4 bg-slate-100 dark:bg-industrial-800 rounded-full">
+                            <Upload className="w-8 h-8 text-slate-400 dark:text-slate-300" />
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Upload Battery Data</h3>
+                            <p className="text-slate-600 dark:text-slate-300 mt-1 font-medium">Drag and drop your .csv, .xls, or .fluke files here</p>
+                        </div>
+                        <button 
+                            onClick={handleManualUpload}
+                            className="px-6 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg font-bold transition-colors shadow-lg shadow-brand-900/20"
+                        >
+                            Browse Files
+                        </button>
+                        {error && (
+                            <div className="text-red-500 text-sm font-bold flex items-center gap-2 mt-4">
+                                <AlertCircle className="w-4 h-4" />
+                                {error}
+                            </div>
+                        )}
+                    </>
+                )}
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 rounded-lg bg-orange-50 dark:bg-orange-900/10 border border-orange-100 dark:border-orange-900/30 flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-orange-600 dark:text-orange-400 shrink-0 mt-0.5" />
+                    <div>
+                    <h4 className="font-bold text-orange-900 dark:text-orange-300 text-sm">Requirements</h4>
+                    <p className="text-xs text-orange-800 dark:text-orange-400 mt-1">
+                        • Required: Cell ID, Voltage (V)<br/>
+                        {analysisType === 'capacity' && <span>• Required: Discharge Current, Start/End Time<br/></span>}
+                        {analysisType === 'impedance' && <span>• Required: Ohmic Value (mΩ/µΩ)<br/></span>}
+                        • Max file size: 25MB
+                    </p>
+                    </div>
+                </div>
+                <div className="p-4 rounded-lg bg-slate-50 dark:bg-industrial-800 border border-slate-200 dark:border-industrial-700 flex items-center justify-between group cursor-pointer hover:border-brand-500 transition-colors">
+                    <div className="flex items-center gap-3">
+                    <FileText className="w-5 h-5 text-slate-400" />
+                    <div className="text-sm">
+                        <p className="font-bold text-slate-700 dark:text-slate-200">Download Template</p>
+                        <p className="text-slate-500 text-xs">Excel Spreadsheet (.xlsx)</p>
+                    </div>
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-brand-500" />
+                </div>
+            </div>
+            <input 
+                type="file" 
+                ref={fileInputRef} 
+                className="hidden" 
+                onChange={handleFileChange} 
+                accept=".csv,.xls,.xlsx,.fluke"
+            />
+        </>
+      ) : (
+          <div className="space-y-6">
+              <div className="bg-slate-50 dark:bg-industrial-800 p-6 rounded-xl border border-slate-200 dark:border-industrial-700">
+                  <div className="flex items-center justify-between mb-4 flex-wrap gap-4">
+                      <h4 className="font-bold text-slate-800 dark:text-white">Manual Data Entry</h4>
+                      <div className="flex items-center gap-4 flex-wrap">
+                          {/* Helper Text for Capacity */}
+                           {analysisType === 'capacity' && (
+                                <div className="text-xs text-slate-500 italic">
+                                     * Enter <strong>End-of-Test</strong> Voltages
+                                </div>
+                           )}
+
+                          <div className="flex items-center gap-2">
+                              <label className="text-sm text-slate-600 dark:text-slate-400">Cells:</label>
+                              <input 
+                                type="number" 
+                                value={numCells} 
+                                onChange={(e) => setNumCells(parseInt(e.target.value) || 10)}
+                                className="w-16 px-2 py-1 border rounded text-right"
+                              />
+                          </div>
+                          <button 
+                            onClick={initializeManualGrid}
+                            className="text-xs bg-brand-100 hover:bg-brand-200 text-brand-700 px-3 py-1 rounded font-bold"
+                          >
+                              Update Grid
+                          </button>
+                      </div>
+                  </div>
+
+                  <div className="overflow-x-auto max-h-[500px] border border-slate-200 dark:border-industrial-600 rounded-lg">
+                      <table className="w-full text-sm text-left">
+                          <thead className="bg-slate-100 dark:bg-industrial-900 text-slate-500 dark:text-slate-400 font-bold sticky top-0 z-10">
+                              <tr>
+                                  <th className="px-4 py-3">ID</th>
+                                  <th className="px-4 py-3">Voltage (V)</th>
+                                  <th className="px-4 py-3">Temp (°C)</th>
+                                  {analysisType === 'impedance' && <th className="px-4 py-3">Impedance (mΩ)</th>}
+                              </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200 dark:divide-industrial-700 bg-white dark:bg-industrial-800">
+                              {manualCells.map((cell, idx) => (
+                                  <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-industrial-700/50">
+                                      <td className="px-4 py-2">
+                                          <input 
+                                            type="text" 
+                                            value={cell.cellId}
+                                            onChange={(e) => handleCellChange(idx, 'cellId', e.target.value)}
+                                            className="w-full bg-transparent border-none focus:ring-0 p-0 font-medium"
+                                          />
+                                      </td>
+                                      <td className="px-4 py-2">
+                                          <input 
+                                            type="number" 
+                                            step="0.01"
+                                            value={cell.voltage}
+                                            onChange={(e) => handleCellChange(idx, 'voltage', e.target.value)}
+                                            className={`w-full bg-transparent border-b border-transparent focus:border-brand-500 focus:ring-0 p-1 ${cell.voltage < 2.0 ? 'text-red-500 font-bold' : ''}`}
+                                          />
+                                      </td>
+                                      <td className="px-4 py-2">
+                                          <input 
+                                            type="number" 
+                                            step="0.1"
+                                            value={cell.temperature}
+                                            onChange={(e) => handleCellChange(idx, 'temperature', e.target.value)}
+                                            className="w-full bg-transparent border-b border-transparent focus:border-brand-500 focus:ring-0 p-1"
+                                          />
+                                      </td>
+                                      {analysisType === 'impedance' && (
+                                          <td className="px-4 py-2">
+                                              <input 
+                                                type="number" 
+                                                step="0.01"
+                                                value={cell.impedanceOhms || 0}
+                                                onChange={(e) => handleCellChange(idx, 'impedanceOhms', e.target.value)}
+                                                className="w-full bg-transparent border-b border-transparent focus:border-brand-500 focus:ring-0 p-1"
+                                              />
+                                          </td>
+                                      )}
+                                  </tr>
+                              ))}
+                          </tbody>
+                      </table>
+                  </div>
+              </div>
+
+              <div className="flex justify-end">
+                   <button 
+                      onClick={handleManualAnalyze}
+                      disabled={uploading}
+                      className="px-8 py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-lg font-bold shadow-lg shadow-brand-900/20 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                   >
+                       {uploading ? 'Analyzing...' : 'Run Analysis'}
+                       {!uploading && <ArrowRight className="w-5 h-5" />}
+                   </button>
+              </div>
+              
+              {error && (
+                    <div className="text-red-500 text-sm font-bold flex items-center gap-2 mt-4">
+                        <AlertCircle className="w-4 h-4" />
+                        {error}
+                    </div>
+                )}
+          </div>
+      )}
     </div>
   );
 };

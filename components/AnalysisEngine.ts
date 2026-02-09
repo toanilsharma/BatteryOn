@@ -126,9 +126,28 @@ export const analyzeBattery = (cells: CellInput[], meta: AssetMetadata, profile:
   let avgCapacityPct = 0;
   
   // A. Global Bank Capacity
-  if (meta.measuredCapacityAh && meta.nominalCapacityAh) {
-    const soh = (meta.measuredCapacityAh / meta.nominalCapacityAh) * 100;
+  if (meta.dischargeCurrent && meta.testDurationMins && meta.nominalCapacityAh) {
+    // Determine discharge end voltage based on C-Rate
+    let dischargeEndVoltage = profile.dischargeEnd; // Default from profile
+    if (meta.dischargeRate === 'C10') {
+        dischargeEndVoltage = 1.80; // Standard for C10
+    } else if (meta.dischargeRate === 'C8') {
+        dischargeEndVoltage = 1.75; // Standard for C8
+    } else if (meta.dischargeRate === 'C5') {
+        dischargeEndVoltage = 1.75; // Standard for C5
+    } else if (meta.dischargeRate === 'C3') {
+        dischargeEndVoltage = 1.75; // Standard for C3
+    } else if (meta.dischargeRate === 'C1') {
+        dischargeEndVoltage = 1.70; // Standard for C1
+    }
+
+    const measuredAh = (meta.dischargeCurrent * meta.testDurationMins) / 60;
+    const soh = (measuredAh / meta.nominalCapacityAh) * 100;
     avgCapacityPct = soh;
+    
+    // Add Measured Capacity to Meta for Report (if passed by reference, otherwise it's just local calc)
+    // We can't modify meta here typically, but we use the value.
+    
     if (soh < 80) {
       healthPoints = Math.min(healthPoints, 40); // Force critical
       findings.push({
@@ -136,7 +155,7 @@ export const analyzeBattery = (cells: CellInput[], meta: AssetMetadata, profile:
         finding: `Bank Capacity Failure (SOH: ${soh.toFixed(1)}%)`,
         risk: 'End of Life (EOL). System cannot support load for rated duration.',
         recommendationShort: 'Replace Battery Bank.',
-        recommendationLong: 'Plan immediate replacement. Test load reduction.',
+        recommendationLong: `Measured ${measuredAh.toFixed(1)}Ah vs Rated ${meta.nominalCapacityAh}Ah. Plan immediate replacement.`,
         standardRef: 'IEEE 450 Rec: Replace < 80%'
       });
       complianceStats.compliant = false;
@@ -151,43 +170,28 @@ export const analyzeBattery = (cells: CellInput[], meta: AssetMetadata, profile:
         standardRef: 'IEEE 450/1188'
       });
     }
-  }
 
-  // B. Per-Cell Capacity Analysis (Weak Cell Detection)
-  const capacityCells = cells.filter(c => c.measuredAh !== undefined && c.ratedAh !== undefined);
-  if (capacityCells.length > 0) {
-     const caps = capacityCells.map(c => (c.measuredAh! / c.ratedAh!) * 100);
-     const minCap = Math.min(...caps);
-     const avgCap = calculateMean(caps);
-     if (avgCapacityPct === 0) avgCapacityPct = avgCap;
+    // B. Cell Voltage Analysis at End of Test
+    // If we are in capacity test mode, low voltage means the cell FAILED or limited the test.
+    cells.forEach(c => {
+        if (c.voltage < dischargeEndVoltage) {
+             findings.push({
+                severity: 'Critical',
+                finding: `Cell ${c.cellId} Failed Capacity Test (<${dischargeEndVoltage.toFixed(2)}V based on ${meta.dischargeRate || 'Custom Rate'})`,
+                risk: 'Cell limited the string duration.',
+                recommendationShort: 'Replace Cell.',
+                recommendationLong: 'This cell reached cutoff voltage before the test duration ended.',
+                standardRef: 'IEEE 450'
+             });
+             complianceStats.compliant = false;
+        }
+    });
 
-     capacityCells.forEach(c => {
-       const capPct = (c.measuredAh! / c.ratedAh!) * 100;
-       if (capPct < 80) {
-         healthPoints = Math.min(healthPoints, 45);
-         findings.push({
-            severity: 'Critical',
-            finding: `Cell ${c.cellId} Capacity Failure (${capPct.toFixed(1)}%)`,
-            risk: 'Weakest link limits entire string duration.',
-            recommendationShort: 'Replace cell or bypass.',
-            recommendationLong: 'If >10% of cells failed, replace entire bank.',
-            standardRef: 'IEEE 450/1188'
-         });
-         complianceStats.compliant = false;
-       }
-     });
-
-     const capSpread = Math.max(...caps) - minCap;
-     if (capSpread > 15) {
-       findings.push({
-         severity: 'Warning',
-         finding: `High Capacity Imbalance (${capSpread.toFixed(1)}%)`,
-         risk: 'Uneven aging. Strong cells will overcharge, weak cells over-discharge.',
-         recommendationShort: 'Review history.',
-         recommendationLong: 'Plan for bank replacement.',
-         standardRef: 'IEEE 1188'
-       });
-     }
+  } else if (meta.measuredCapacityAh && meta.nominalCapacityAh) {
+      // Legacy or direct input support
+    const soh = (meta.measuredCapacityAh / meta.nominalCapacityAh) * 100;
+    avgCapacityPct = soh;
+    // ... (Keep existing logic for direct SOH input if needed, but above block covers new flow)
   }
 
   // --- 5. Temperature Deviation ---
@@ -265,6 +269,62 @@ export const analyzeBattery = (cells: CellInput[], meta: AssetMetadata, profile:
      }
   }
 
+
+  // --- 7.5 Specific Gravity Analysis (Flooded / OPzS) ---
+  const sgCells = cells.filter(c => c.specificGravity !== undefined);
+  let sgStats = undefined;
+  
+  if (sgCells.length > 0 && profile.specificGravityNominal) {
+      const sgs = sgCells.map(c => c.specificGravity!);
+      const meanSG = calculateMean(sgs);
+      const minSG = Math.min(...sgs);
+      const maxSG = Math.max(...sgs);
+      const sgSpread = maxSG - minSG;
+      
+      sgStats = { minSG, maxSG, avgSG: meanSG, sgSpread };
+
+      // A. Global Low SG (Undercharge / Sulfation)
+      if (meanSG < profile.specificGravityNominal - 0.010) {
+          healthPoints -= 10;
+          findings.push({
+             severity: 'Warning',
+             finding: `Low Electrolyte Gravity (Avg: ${meanSG.toFixed(3)})`,
+             risk: 'Sulfation due to chronic undercharging.',
+             recommendationShort: 'Perform Equalize Charge.',
+             recommendationLong: 'Check charger output voltage/current. Verify temperature compensation.',
+             standardRef: 'IS 1651 / IEEE 450'
+          });
+      }
+
+      // B. High Spread (Stratification or Weak Cell)
+      if (sgSpread > 0.020) {
+           healthPoints -= 15;
+           findings.push({
+             severity: 'Warning',
+             finding: `High Specific Gravity Deviation (${sgSpread.toFixed(3)})`,
+             risk: 'Acid stratification or individual cell water loss.',
+             recommendationShort: 'Equalize and top-up water.',
+             recommendationLong: 'Mix electrolyte. If spread persists, perform capacity test.',
+             standardRef: 'IEEE 450'
+           });
+      }
+
+      // C. Individual Cell Checks
+      sgCells.forEach(c => {
+         // Low SG Cell
+         if (c.specificGravity! < meanSG - 0.015) {
+             findings.push({
+                 severity: 'Warning',
+                 finding: `Cell ${c.cellId} Low Specific Gravity (${c.specificGravity!.toFixed(3)})`,
+                 risk: 'Local sulfation or short circuit.',
+                 recommendationShort: 'Boost charge / Equalize.',
+                 recommendationLong: 'Verify cell voltage. If voltage also low, replace cell.',
+                 standardRef: 'IS 1651 Table 2'
+             });
+         }
+      });
+  }
+
   // Final Grade Calculation
   healthPoints = Math.max(0, Math.min(100, healthPoints));
 
@@ -307,6 +367,7 @@ export const analyzeBattery = (cells: CellInput[], meta: AssetMetadata, profile:
   forwardPath.shortTerm = [...new Set(forwardPath.shortTerm)];
 
   return {
+    id: meta.assetId + '-' + new Date().getTime(), // Generate a unique ID
     assetId: meta.assetId,
     timestamp: new Date().toISOString(),
     chemistry: profile.name,
@@ -319,7 +380,8 @@ export const analyzeBattery = (cells: CellInput[], meta: AssetMetadata, profile:
       stdDev,
       zScoreMax: cellResults.length > 0 ? Math.max(...cellResults.map(c => Math.abs(c.zScore))) : 0,
       totalVoltage: cells.reduce((sum, c) => sum + c.voltage, 0),
-      avgCapacityPct
+      avgCapacityPct,
+      ...sgStats
     },
     cells: cellResults,
     healthScore: Math.floor(healthPoints),

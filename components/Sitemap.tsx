@@ -1,17 +1,9 @@
 import React from 'react';
 import { 
-  Home, 
   LayoutDashboard, 
   Activity, 
-  FileText, 
-  Settings, 
-  ShieldCheck, 
   BookOpen, 
   Map, 
-  Zap,
-  BarChart3,
-  Thermometer,
-  Cloud,
   ArrowRight
 } from 'lucide-react';
 
@@ -22,18 +14,14 @@ export const Sitemap: React.FC<{ onNavigate: (view: string) => void }> = ({ onNa
       icon: LayoutDashboard,
       links: [
         { name: 'Dashboard', view: 'dashboard', desc: 'Main overview of fleet status' },
-        { name: 'Real-Time Monitoring', view: 'monitoring', desc: 'Live SCADA/IoT data view' },
         { name: 'Analysis Engine', view: 'analysis', desc: 'Upload and analyze battery data' },
         { name: 'Reports', view: 'reports', desc: 'Geneated engineering reports' },
-        { name: 'Compliance', view: 'compliance', desc: 'NERC/IEEE regulatory status' },
-        { name: 'Fleet Manager', view: 'fleet', desc: 'Multi-site asset management' },
       ]
     },
     {
       title: 'Resources',
       icon: BookOpen,
       links: [
-        { name: 'Knowledge Base', view: 'knowledge', desc: 'Battery standards and guides' },
         { name: 'System Settings', view: 'settings', desc: 'Configuration and preferences' },
       ]
     },
@@ -86,12 +74,12 @@ export const Sitemap: React.FC<{ onNavigate: (view: string) => void }> = ({ onNa
       
       <div className="mt-12 p-8 bg-slate-100 dark:bg-industrial-900 rounded-xl text-center">
          <h3 className="font-bold text-slate-700 dark:text-slate-300 mb-2">Need Help?</h3>
-         <p className="text-sm text-slate-500 mb-4">Check the Knowledge Base for detailed documentation on IEEE standards and analysis procedures.</p>
+         <p className="text-sm text-slate-500 mb-4">Contact support for assistance with the Analysis Engine.</p>
          <button 
-           onClick={() => onNavigate('knowledge')}
+           onClick={() => onNavigate('contact')}
            className="px-6 py-2 bg-white dark:bg-industrial-800 border border-slate-300 dark:border-industrial-600 rounded-lg text-sm font-bold shadow-sm hover:shadow-md transition-all"
          >
-           Open Knowledge Base
+           Contact Support
          </button>
       </div>
 

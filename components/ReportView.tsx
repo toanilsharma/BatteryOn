@@ -1,16 +1,12 @@
 import React from 'react';
 import { AnalysisResult } from '../types';
 import { 
-  FileText, 
-  Download, 
   Printer, 
   ChevronLeft, 
-  ShieldCheck, 
-  AlertTriangle, 
+  AlertTriangle,
   CheckCircle, 
   XCircle,
   Activity,
-  Calendar,
   User
 } from 'lucide-react';
 
@@ -138,7 +134,16 @@ export const ReportView: React.FC<ReportViewProps> = ({ data, onBack }) => {
                            <p className="mb-3">
                               A comprehensive diagnostic analysis was performed on <strong>{data.cells.length} cells</strong>. 
                               The system is currently operating at a mean voltage of <strong>{data.stats.meanVoltage.toFixed(3)}V</strong>.
-                              Advanced algorithmic projections indicate a Remaining Useful Life (RUL) of <strong>{data.prediction?.remainingMonths || 'N/A'} months</strong>.
+                              {data.stats.avgCapacityPct ? (
+                                 <>
+                                    Capacity test results indicate a State of Health (SOH) of <strong>{data.stats.avgCapacityPct.toFixed(1)}%</strong>
+                                    {(data.compliance.compliant && data.stats.avgCapacityPct > 80) ? ', within acceptable limits.' : ', requiring attention.'}
+                                 </>
+                              ) : (
+                                 <>
+                                    Advanced algorithmic projections indicate a Remaining Useful Life (RUL) of <strong>{data.prediction?.remainingMonths || 'N/A'} months</strong>.
+                                 </>
+                              )}
                            </p>
                            <p>
                               Compliance verification against {data.compliance.standards.join('/')} standards resulted in a 
@@ -151,7 +156,7 @@ export const ReportView: React.FC<ReportViewProps> = ({ data, onBack }) => {
                      </div>
                      <div className="w-full md:w-48 shrink-0 flex flex-col gap-2">
                         <StatusMetric label="System Health" value={`${data.healthScore}/100`} score={data.healthScore} />
-                        <StatusMetric label="Voltage Stab." value={data.stats.isBalanced ? 'Good' : 'Poor'} neutral />
+                        <StatusMetric label="Voltage Stab." value={data.stats.stdDev < 0.01 ? 'Good' : 'Poor'} neutral />
                         <StatusMetric label="Thermal Risk" value={data.thermal?.riskLevel || 'N/A'} inverse />
                      </div>
                   </div>
@@ -205,10 +210,33 @@ export const ReportView: React.FC<ReportViewProps> = ({ data, onBack }) => {
                )}
             </section>
 
-            {/* 3. Detailed Technical Data (Brief) */}
+            {/* 3. Visual Analytics (New Section) */}
+            <section className="mb-10 page-break-inside-avoid">
+               <h2 className="flex items-center gap-3 text-xl font-bold text-slate-900 mb-6 pb-2 border-b border-slate-200">
+                  <span className="flex items-center justify-center w-6 h-6 rounded bg-brand-100 text-brand-700 text-xs">3</span>
+                  Visual Analytics
+               </h2>
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                     <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Cell Health Map</h4>
+                     <VoltageHeatmap cells={data.cells} />
+                     <div className="flex justify-center gap-4 mt-4 text-[10px]">
+                        <div className="flex items-center gap-1"><div className="w-2 h-2 bg-green-500 rounded-sm"></div>OK</div>
+                        <div className="flex items-center gap-1"><div className="w-2 h-2 bg-yellow-400 rounded-sm"></div>Warning</div>
+                        <div className="flex items-center gap-1"><div className="w-2 h-2 bg-red-500 rounded-sm"></div>Critical</div>
+                     </div>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                     <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Voltage vs. Impedance Correlation</h4>
+                     <CorrelationPlot cells={data.cells} />
+                  </div>
+               </div>
+            </section>
+
+            {/* 4. Detailed Technical Data (Brief) */}
             <section className="mb-8">
                 <h2 className="flex items-center gap-3 text-xl font-bold text-slate-900 mb-6 pb-2 border-b border-slate-200">
-                  <span className="flex items-center justify-center w-6 h-6 rounded bg-brand-100 text-brand-700 text-xs">3</span>
+                  <span className="flex items-center justify-center w-6 h-6 rounded bg-brand-100 text-brand-700 text-xs">4</span>
                   Technical Statistics
                </h2>
                <div className="grid grid-cols-4 gap-4 text-center">
@@ -216,6 +244,22 @@ export const ReportView: React.FC<ReportViewProps> = ({ data, onBack }) => {
                   <StatBox label="Max Voltage" value={`${data.stats.maxVoltage.toFixed(3)} V`} />
                   <StatBox label="Avg Impedance" value={`${data.impedance?.avgImpedance.toFixed(2) || '-'} mΩ`} />
                   <StatBox label="Max Temp" value={`${data.thermal?.maxTemp.toFixed(1) || '-'} °C`} />
+                  {data.stats.avgSG && (
+                     <>
+                        <StatBox label="Avg SG" value={data.stats.avgSG.toFixed(3)} />
+                        <StatBox label="Min SG" value={data.stats.minSG?.toFixed(3) || '-'} />
+                        <StatBox label="SG Spread" value={data.stats.sgSpread?.toFixed(3) || '-'} />
+                        <StatBox label="Sulfation Risk" value={data.stats.avgSG < 1.210 ? 'HIGH' : 'LOW'} />
+                     </>
+                  )}
+                  {data.stats.avgSG && (
+                     <>
+                        <StatBox label="Avg SG" value={data.stats.avgSG.toFixed(3)} />
+                        <StatBox label="Min SG" value={data.stats.minSG?.toFixed(3) || '-'} />
+                        <StatBox label="SG Spread" value={data.stats.sgSpread?.toFixed(3) || '-'} />
+                        <StatBox label="Sulfation Risk" value={data.stats.avgSG < 1.200 ? 'HIGH' : 'LOW'} />
+                     </>
+                  )}
                </div>
             </section>
 
@@ -277,3 +321,68 @@ const StatBox = ({ label, value }: { label: string, value: string }) => (
       <div className="text-slate-900 font-mono font-bold">{value}</div>
    </div>
 );
+
+// New Visualization Components
+
+import { ScatterChart, Scatter, XAxis, YAxis, Tooltip as ReTooltip, ResponsiveContainer, Cell, ZAxis } from 'recharts';
+
+const VoltageHeatmap = ({ cells }: { cells: any[] }) => {
+   // Create a grid representation
+   
+   return (
+      <div className="flex flex-wrap gap-1 justify-center">
+         {cells.map((cell) => {
+            const isLow = cell.status === 'Fail';
+            const isWarn = cell.status === 'Warn';
+            const colorClass = isLow ? 'bg-red-500' : isWarn ? 'bg-yellow-400' : 'bg-green-500';
+            
+            return (
+               <div 
+                  key={cell.cellId} 
+                  className={`w-4 h-4 rounded-sm ${colorClass} hover:ring-2 ring-offset-1 ring-slate-400 cursor-help`}
+                  title={`Cell ${cell.cellId}: ${cell.voltage.toFixed(2)}V`}
+               />
+            );
+         })}
+      </div>
+   );
+};
+
+const CorrelationPlot = ({ cells }: { cells: any[] }) => {
+   const data = cells.map(c => ({
+      x: c.impedanceOhms || 0,
+      y: c.voltage,
+      id: c.cellId,
+      status: c.status
+   }));
+
+   return (
+      <div className="h-64 w-full">
+         <ResponsiveContainer width="100%" height="100%">
+            <ScatterChart margin={{ top: 10, right: 10, bottom: 20, left: 20 }}>
+               <XAxis type="number" dataKey="x" name="Impedance" unit="mΩ" stroke="#94a3b8" fontSize={12} tick={{fill: '#94a3b8'}} />
+               <YAxis type="number" dataKey="y" name="Voltage" unit="V" stroke="#94a3b8" fontSize={12} tick={{fill: '#94a3b8'}} domain={['auto', 'auto']} />
+               <ZAxis type="number" range={[50, 50]} />
+               <ReTooltip cursor={{ strokeDasharray: '3 3' }} content={({ active, payload }) => {
+                  if (active && payload && payload.length) {
+                     const d = payload[0].payload;
+                     return (
+                        <div className="bg-slate-800 text-white text-xs p-2 rounded shadow-lg">
+                           <p className="font-bold">Cell {d.id}</p>
+                           <p>Imp: {d.x.toFixed(3)} mΩ</p>
+                           <p>Volt: {d.y.toFixed(3)} V</p>
+                        </div>
+                     );
+                  }
+                  return null;
+               }} />
+               <Scatter name="Cells" data={data} fill="#8884d8">
+                  {data.map((entry, index) => (
+                     <Cell key={`cell-${index}`} fill={entry.status === 'Fail' ? '#ef4444' : entry.status === 'Warn' ? '#eab308' : '#3b82f6'} />
+                  ))}
+               </Scatter>
+            </ScatterChart>
+         </ResponsiveContainer>
+      </div>
+   );
+};
