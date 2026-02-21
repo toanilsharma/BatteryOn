@@ -10,6 +10,7 @@ import { AppLayout } from './components/AppLayout';
 import { AnalysisUpload } from './components/AnalysisUpload';
 import { FlukeDataViewer } from './components/FlukeDataViewer';
 import { Sitemap } from './components/Sitemap';
+import { Standards } from './components/Standards';
 import { AnalysisResult } from './types';
 
 import { ThemeProvider, useTheme } from './components/ThemeContext';
@@ -158,6 +159,12 @@ function AppContent() {
         );
       case 'sitemap':
         return <Sitemap onNavigate={handleNavigate} />;
+      case 'standards':
+        return (
+          <div className="space-y-6 animate-fade-in">
+            <Standards />
+          </div>
+        );
       case 'settings':
         // ... (Settings code remains same)
         return (

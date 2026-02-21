@@ -3,7 +3,7 @@ import { Upload, FileText, AlertCircle, Zap, Battery, MapPin, Clock, Hash, Trend
 import { parseFlukeCSV, FlukeParseResult, FlukeCellReading } from './FlukeCSVParser';
 import {
     BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-    ReferenceLine, Cell, ComposedChart, Area, Legend, ScatterChart, Scatter, ZAxis
+    ReferenceLine, Cell, ComposedChart, Area, Legend, ScatterChart, Scatter, ZAxis, Brush
 } from 'recharts';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -86,9 +86,79 @@ export const FlukeDataViewer: React.FC = () => {
 
     const getResistanceBarColor = (val: number, avg: number) => {
         const deviation = Math.abs(val - avg) / avg;
-        if (deviation > 0.5) return '#ef4444';
-        if (deviation > 0.3) return '#f59e0b';
-        return '#10b981';
+        if (deviation > 0.5) return '#ef4444'; // Red-500
+        if (deviation > 0.3) return '#f59e0b'; // Amber-500
+        return '#10b981'; // Emerald-500
+    };
+
+    const CustomChartTooltip = ({ active, payload, label, type }: any) => {
+        if (active && payload && payload.length) {
+            const data = payload[0].payload;
+            const resDev = data.resistance ? Math.abs(data.resistance - stats.avgResistance) / stats.avgResistance : 0;
+            const resStatus = resDev > 0.5 ? 'CRITICAL FAIL' : resDev > 0.3 ? 'WARNING' : 'PASS';
+            const resColor = resDev > 0.5 ? 'text-red-500' : resDev > 0.3 ? 'text-amber-500' : 'text-emerald-500';
+
+            return (
+                <div className="bg-white dark:bg-industrial-800 border border-slate-200 dark:border-industrial-700 shadow-xl rounded-lg p-3 text-sm min-w-[180px]">
+                    <p className="font-bold text-slate-800 dark:text-slate-200 border-b border-slate-100 dark:border-industrial-700 pb-2 mb-2">
+                        {type === 'distribution' ? `Range: ${data.range} mΩ` : `Cell ${label || data.id}`}
+                    </p>
+                    {type === 'resistance' && (
+                        <div className="space-y-1.5">
+                            <div className="flex justify-between gap-4">
+                                <span className="text-slate-500 dark:text-slate-400">Resistance:</span>
+                                <span className={`font-bold ${resColor}`}>{data.resistance} mΩ</span>
+                            </div>
+                            <div className="flex justify-between gap-4">
+                                <span className="text-slate-500 dark:text-slate-400">Deviation (avg):</span>
+                                <span className={`font-bold ${resColor}`}>±{(resDev * 100).toFixed(1)}%</span>
+                            </div>
+                            <div className="mt-2 pt-2 border-t border-slate-100 dark:border-industrial-700">
+                                <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${resDev > 0.5 ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' :
+                                    resDev > 0.3 ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' :
+                                        'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                                    }`}>{resStatus}</span>
+                            </div>
+                        </div>
+                    )}
+                    {type === 'voltage' && (
+                        <div className="space-y-1.5">
+                            <div className="flex justify-between gap-4">
+                                <span className="text-slate-500 dark:text-slate-400">Voltage:</span>
+                                <span className="font-bold text-blue-500">{data.voltage} VDC</span>
+                            </div>
+                        </div>
+                    )}
+                    {type === 'combined' && (
+                        <div className="space-y-1.5">
+                            <div className="flex justify-between gap-4">
+                                <span className="text-slate-500 dark:text-slate-400">Resistance:</span>
+                                <span className={`font-bold ${resColor}`}>{data.resistance} mΩ</span>
+                            </div>
+                            <div className="flex justify-between gap-4">
+                                <span className="text-slate-500 dark:text-slate-400">Voltage:</span>
+                                <span className="font-bold text-blue-500">{data.voltage} VDC</span>
+                            </div>
+                            <div className="mt-2 pt-2 border-t border-slate-100 dark:border-industrial-700">
+                                <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${resDev > 0.5 ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' :
+                                    resDev > 0.3 ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' :
+                                        'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                                    }`}>{resStatus}</span>
+                            </div>
+                        </div>
+                    )}
+                    {type === 'distribution' && (
+                        <div className="space-y-1.5">
+                            <div className="flex justify-between gap-4">
+                                <span className="text-slate-500 dark:text-slate-400">Cell Count:</span>
+                                <span className="font-bold text-violet-500">{data.count} Cells</span>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+        return null;
     };
 
     // Histogram data for distribution
@@ -974,17 +1044,14 @@ export const FlukeDataViewer: React.FC = () => {
                                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                                 <XAxis dataKey="id" tick={{ fontSize: 10 }} interval={Math.floor(chartData.length / 20)} label={{ value: 'Cell ID', position: 'insideBottom', offset: -10, fontSize: 12 }} />
                                 <YAxis tick={{ fontSize: 11 }} label={{ value: 'mΩ', angle: -90, position: 'insideLeft', offset: 10, fontSize: 12 }} />
-                                <Tooltip
-                                    contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                                    formatter={(value: number) => [`${value} mΩ`, 'Resistance']}
-                                    labelFormatter={(label) => `Cell ${label}`}
-                                />
+                                <Tooltip cursor={{ fill: 'rgba(148, 163, 184, 0.1)' }} content={<CustomChartTooltip type="resistance" />} />
                                 <ReferenceLine y={stats.avgResistance} stroke="#f59e0b" strokeDasharray="5 5" label={{ value: `Avg: ${stats.avgResistance}`, position: 'right', fontSize: 11 }} />
                                 <Bar dataKey="resistance" radius={[2, 2, 0, 0]}>
                                     {chartData.map((entry, index) => (
                                         <Cell key={index} fill={getResistanceBarColor(entry.resistance, stats.avgResistance)} />
                                     ))}
                                 </Bar>
+                                <Brush dataKey="id" height={30} stroke="#4f46e5" fill="#f8fafc" />
                             </BarChart>
                         </ResponsiveContainer>
                     )}
@@ -995,13 +1062,10 @@ export const FlukeDataViewer: React.FC = () => {
                                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                                 <XAxis dataKey="id" tick={{ fontSize: 10 }} interval={Math.floor(chartData.length / 20)} label={{ value: 'Cell ID', position: 'insideBottom', offset: -10, fontSize: 12 }} />
                                 <YAxis domain={['auto', 'auto']} tick={{ fontSize: 11 }} label={{ value: 'VDC', angle: -90, position: 'insideLeft', offset: 10, fontSize: 12 }} />
-                                <Tooltip
-                                    contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                                    formatter={(value: number) => [`${value} V`, 'Voltage']}
-                                    labelFormatter={(label) => `Cell ${label}`}
-                                />
+                                <Tooltip cursor={{ fill: 'rgba(148, 163, 184, 0.1)' }} content={<CustomChartTooltip type="voltage" />} />
                                 <ReferenceLine y={stats.avgVoltage} stroke="#10b981" strokeDasharray="5 5" label={{ value: `Avg: ${stats.avgVoltage}V`, position: 'right', fontSize: 11 }} />
                                 <Line type="monotone" dataKey="voltage" stroke="#3b82f6" strokeWidth={2} dot={{ r: 2, fill: '#3b82f6' }} activeDot={{ r: 5 }} />
+                                <Brush dataKey="id" height={30} stroke="#4f46e5" fill="#f8fafc" />
                             </LineChart>
                         </ResponsiveContainer>
                     )}
@@ -1012,12 +1076,12 @@ export const FlukeDataViewer: React.FC = () => {
                                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                                 <XAxis dataKey="range" tick={{ fontSize: 9, angle: -30 }} height={50} label={{ value: 'Resistance Range (mΩ)', position: 'insideBottom', offset: -5, fontSize: 12 }} />
                                 <YAxis tick={{ fontSize: 11 }} label={{ value: 'Count', angle: -90, position: 'insideLeft', offset: 10, fontSize: 12 }} />
-                                <Tooltip
-                                    contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                                    formatter={(value: number) => [`${value} cells`, 'Count']}
-                                    labelFormatter={(label) => `Range: ${label} mΩ`}
-                                />
-                                <Bar dataKey="count" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                                <Tooltip cursor={{ fill: 'rgba(148, 163, 184, 0.1)' }} content={<CustomChartTooltip type="distribution" />} />
+                                <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                                    {distributionData.map((entry, index) => (
+                                        <Cell key={index} fill={entry.count > stats.totalCells * 0.15 ? '#8b5cf6' : '#a78bfa'} />
+                                    ))}
+                                </Bar>
                             </BarChart>
                         </ResponsiveContainer>
                     )}
@@ -1029,17 +1093,15 @@ export const FlukeDataViewer: React.FC = () => {
                                 <XAxis dataKey="id" tick={{ fontSize: 10 }} interval={Math.floor(chartData.length / 20)} label={{ value: 'Cell ID', position: 'insideBottom', offset: -10, fontSize: 12 }} />
                                 <YAxis yAxisId="left" tick={{ fontSize: 11 }} label={{ value: 'mΩ', angle: -90, position: 'insideLeft', offset: 10, fontSize: 12 }} />
                                 <YAxis yAxisId="right" orientation="right" domain={['auto', 'auto']} tick={{ fontSize: 11 }} label={{ value: 'VDC', angle: 90, position: 'insideRight', offset: 10, fontSize: 12 }} />
-                                <Tooltip
-                                    contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                                    formatter={(value: number, name: string) => [
-                                        name === 'resistance' ? `${value} mΩ` : `${value} V`,
-                                        name === 'resistance' ? 'Resistance' : 'Voltage'
-                                    ]}
-                                    labelFormatter={(label) => `Cell ${label}`}
-                                />
+                                <Tooltip cursor={{ fill: 'rgba(148, 163, 184, 0.1)' }} content={<CustomChartTooltip type="combined" />} />
                                 <Legend />
-                                <Bar yAxisId="left" dataKey="resistance" fill="#f59e0b" opacity={0.7} radius={[2, 2, 0, 0]} name="Resistance (mΩ)" />
+                                <Bar yAxisId="left" dataKey="resistance" name="Resistance (mΩ)" radius={[2, 2, 0, 0]}>
+                                    {chartData.map((entry, index) => (
+                                        <Cell key={index} fill={getResistanceBarColor(entry.resistance, stats.avgResistance)} />
+                                    ))}
+                                </Bar>
                                 <Line yAxisId="right" type="monotone" dataKey="voltage" stroke="#3b82f6" strokeWidth={2} dot={false} name="Voltage (VDC)" />
+                                <Brush dataKey="id" height={30} stroke="#4f46e5" fill="#f8fafc" />
                             </ComposedChart>
                         </ResponsiveContainer>
                     )}

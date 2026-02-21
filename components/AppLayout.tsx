@@ -10,7 +10,8 @@ import {
    Globe,
    ChevronDown,
    ArrowUp,
-   Zap
+   Zap,
+   BookOpen
 } from 'lucide-react';
 import { useTheme } from './ThemeContext';
 
@@ -97,6 +98,14 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
             { id: 'rep-recent', label: 'Recent Reports', view: 'reports' },
             { id: 'rep-templates', label: 'Templates', view: 'reports' },
             { id: 'rep-archive', label: 'Archive', view: 'reports' },
+         ]
+      },
+      {
+         id: 'standards',
+         label: 'Standards Info',
+         icon: BookOpen,
+         subItems: [
+            { id: 'std-methodology', label: 'Methodology', view: 'standards' },
          ]
       },
       {
