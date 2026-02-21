@@ -131,6 +131,282 @@ export const FlukeDataViewer: React.FC = () => {
         return data.readings.filter(r => Math.abs(r.resistance - avg) > 2 * std);
     }, [data]);
 
+    // ═══════════════════════════════════════════════════════════
+    // STANDARDS-BASED COMPLIANCE ANALYSIS
+    // IEEE 450-2010 | IEEE 1188-2005 | IEC 60896 | IS 1651
+    // ═══════════════════════════════════════════════════════════
+    interface StandardsFinding {
+        severity: 'Critical' | 'Warning' | 'Pass' | 'Info';
+        title: string;
+        description: string;
+        standard: string;
+        clause: string;
+        threshold: string;
+        measured: string;
+        verdict: 'FAIL' | 'WARNING' | 'PASS';
+        recommendations: string[];
+        actions: string[];
+        reliabilityImpact: string;
+    }
+
+    const standardsFindings = useMemo((): StandardsFinding[] => {
+        if (!data) return [];
+        const { stats: s, readings } = data;
+        const findings: StandardsFinding[] = [];
+
+        // 1. RESISTANCE UNIFORMITY — IEEE 1188-2005 Sec 6.3.2
+        // Resistance spread > 20% of average = investigate, > 50% = critical
+        const resistanceSpreadPct = ((s.maxResistance - s.minResistance) / s.avgResistance) * 100;
+        if (resistanceSpreadPct > 50) {
+            findings.push({
+                severity: 'Critical',
+                title: 'Internal Resistance Spread — CRITICAL',
+                description: `Resistance spread of ${resistanceSpreadPct.toFixed(1)}% exceeds the 50% critical threshold per IEEE 1188-2005. This indicates severe cell degradation, high-resistance connections, or internal faults.`,
+                standard: 'IEEE 1188-2005',
+                clause: 'Section 6.3.2 — Impedance/Conductance Testing',
+                threshold: '≤50% spread from mean',
+                measured: `${resistanceSpreadPct.toFixed(1)}% spread (${s.minResistance}–${s.maxResistance} mΩ)`,
+                verdict: 'FAIL',
+                recommendations: [
+                    'Immediately identify cells with resistance >50% above baseline',
+                    'Schedule replacement of degraded cells per IEEE 1188-2005 Sec 7',
+                    'Perform inter-cell connection resistance test (<50µΩ per IEEE 450 Table 3)',
+                    'Verify measurement instrument calibration'
+                ],
+                actions: [
+                    'Replace cells with resistance >50% above average within 30 days',
+                    'Re-test remaining cells after replacement',
+                    'Establish baseline impedance readings for new cells',
+                    'Implement quarterly impedance trending program'
+                ],
+                reliabilityImpact: 'High-resistance cells limit discharge current capacity and reduce autonomy. String performance is limited by the worst cell.'
+            });
+        } else if (resistanceSpreadPct > 20) {
+            findings.push({
+                severity: 'Warning',
+                title: 'Internal Resistance Spread — WARNING',
+                description: `Resistance spread of ${resistanceSpreadPct.toFixed(1)}% exceeds the 20% investigation threshold per IEEE 1188-2005. Early indication of cell aging or connection deterioration.`,
+                standard: 'IEEE 1188-2005',
+                clause: 'Section 6.3.2 — Impedance/Conductance Testing',
+                threshold: '≤20% spread from mean',
+                measured: `${resistanceSpreadPct.toFixed(1)}% spread`,
+                verdict: 'WARNING',
+                recommendations: [
+                    'Flag cells >20% above average for enhanced monitoring',
+                    'Perform inter-cell connection torque verification',
+                    'Compare with baseline values — if >20% increase, investigate root cause',
+                    'Schedule capacity test within 6 months per IEEE 450-2010 Sec 7.3'
+                ],
+                actions: [
+                    'Reduce impedance test interval to quarterly',
+                    'Perform connection resistance measurement on flagged cells',
+                    'Trend impedance values to project replacement timeline'
+                ],
+                reliabilityImpact: 'Developing cell imbalance — current autonomy may be 10-20% less than rated.'
+            });
+        } else {
+            findings.push({
+                severity: 'Pass',
+                title: 'Internal Resistance Uniformity — PASS',
+                description: `Resistance spread of ${resistanceSpreadPct.toFixed(1)}% is within the acceptable ≤20% limit per IEEE 1188-2005. Cells show uniform internal resistance.`,
+                standard: 'IEEE 1188-2005',
+                clause: 'Section 6.3.2',
+                threshold: '≤20% spread',
+                measured: `${resistanceSpreadPct.toFixed(1)}%`,
+                verdict: 'PASS',
+                recommendations: ['Continue quarterly impedance testing per IEEE 1188-2005 Sec 5.3'],
+                actions: ['Maintain current maintenance schedule'],
+                reliabilityImpact: 'Cells are balanced — expected performance consistent with design.'
+            });
+        }
+
+        // 2. VOLTAGE UNIFORMITY — IEEE 450-2010 Sec 7.4, Table 1
+        // Cell-to-cell voltage deviation: ±0.04V for VRLA, ±0.03V for VLA
+        const voltageSpread = s.maxVoltage - s.minVoltage;
+        const voltageSpreadLimit = 0.04; // VRLA default
+        if (voltageSpread > voltageSpreadLimit * 3) {
+            findings.push({
+                severity: 'Critical',
+                title: 'Voltage Uniformity — CRITICAL',
+                description: `Cell voltage spread of ${voltageSpread.toFixed(3)}V significantly exceeds the IEEE 450 limit of ±${voltageSpreadLimit}V. Indicates severely degraded cells, charger malfunction, or connection faults.`,
+                standard: 'IEEE 450-2010',
+                clause: 'Section 7.4, Table 1 — Cell Voltage Limits',
+                threshold: `±${voltageSpreadLimit}V cell-to-cell`,
+                measured: `${voltageSpread.toFixed(3)}V spread (${s.minVoltage}–${s.maxVoltage} VDC)`,
+                verdict: 'FAIL',
+                recommendations: [
+                    'Immediate investigation of low-voltage cells',
+                    'Verify charger float voltage per IEEE 1188-2005 Sec 6.2',
+                    'Check for shorted cells or open connections',
+                    'Perform equalization charge if lead-acid (IEEE 450 Sec 7.2.3)'
+                ],
+                actions: [
+                    'Isolate and test individual low-voltage cells',
+                    'Measure charger output voltage and current regulation',
+                    'Replace cells that do not recover after equalization'
+                ],
+                reliabilityImpact: 'Severe voltage imbalance reduces effective autonomy by 20-40%. Weakest cell determines string cutoff.'
+            });
+        } else if (voltageSpread > voltageSpreadLimit) {
+            findings.push({
+                severity: 'Warning',
+                title: 'Voltage Uniformity — WARNING',
+                description: `Cell voltage spread of ${voltageSpread.toFixed(3)}V exceeds the ±${voltageSpreadLimit}V limit per IEEE 450-2010 Table 1.`,
+                standard: 'IEEE 450-2010',
+                clause: 'Section 7.4, Table 1',
+                threshold: `±${voltageSpreadLimit}V`,
+                measured: `${voltageSpread.toFixed(3)}V`,
+                verdict: 'WARNING',
+                recommendations: [
+                    'Monitor deviant cells monthly',
+                    'Verify charger temperature compensation function',
+                    'Check inter-cell connector torques'
+                ],
+                actions: ['Schedule detailed investigation within 30 days'],
+                reliabilityImpact: 'Moderate voltage imbalance — autonomy may be 5-15% less than rated.'
+            });
+        } else {
+            findings.push({
+                severity: 'Pass',
+                title: 'Voltage Uniformity — PASS',
+                description: `Cell voltage spread of ${voltageSpread.toFixed(3)}V is within the ±${voltageSpreadLimit}V limit per IEEE 450-2010.`,
+                standard: 'IEEE 450-2010',
+                clause: 'Section 7.4, Table 1',
+                threshold: `±${voltageSpreadLimit}V`,
+                measured: `${voltageSpread.toFixed(3)}V`,
+                verdict: 'PASS',
+                recommendations: ['Continue quarterly voltage monitoring per IEEE 450-2010 Sec 5.4'],
+                actions: ['Maintain current maintenance schedule'],
+                reliabilityImpact: 'Voltage balance is nominal — expected performance consistent with design.'
+            });
+        }
+
+        // 3. INDIVIDUAL CELL RESISTANCE vs BASELINE — IEEE 1188-2005 Sec 6.3.2
+        const cellsAbove50Pct = readings.filter(r => Math.abs(r.resistance - s.avgResistance) / s.avgResistance > 0.5);
+        const cellsAbove20Pct = readings.filter(r => {
+            const dev = Math.abs(r.resistance - s.avgResistance) / s.avgResistance;
+            return dev > 0.2 && dev <= 0.5;
+        });
+
+        if (cellsAbove50Pct.length > 0) {
+            findings.push({
+                severity: 'Critical',
+                title: `${cellsAbove50Pct.length} Cell(s) Exceed 50% Resistance Threshold`,
+                description: `Per IEEE 1188-2005 Sec 7: Cells with impedance >50% above baseline shall be replaced. Affected cells: ${cellsAbove50Pct.map(c => c.id).join(', ')}`,
+                standard: 'IEEE 1188-2005',
+                clause: 'Section 7 — Cell Replacement Criteria',
+                threshold: '≤50% above bank average',
+                measured: `${cellsAbove50Pct.length} cells exceed threshold`,
+                verdict: 'FAIL',
+                recommendations: [
+                    `Replace cells: ${cellsAbove50Pct.map(c => `${c.id} (${c.resistance} mΩ)`).join(', ')}`,
+                    'Verify replacement cells match existing string specifications',
+                    'Establish new baseline impedance after replacement'
+                ],
+                actions: [
+                    'Procure replacement cells within 30 days',
+                    'Schedule installation during planned maintenance window',
+                    'Re-test string after replacement per IEC 60896-11 Sec 18'
+                ],
+                reliabilityImpact: `${cellsAbove50Pct.length} cells at end-of-life will limit string performance during discharge events.`
+            });
+        }
+        if (cellsAbove20Pct.length > 0) {
+            findings.push({
+                severity: 'Warning',
+                title: `${cellsAbove20Pct.length} Cell(s) in 20-50% Resistance Warning Zone`,
+                description: `Per IEEE 1188-2005 Sec 6.3.2: Cells with impedance 20-50% above baseline require enhanced monitoring.`,
+                standard: 'IEEE 1188-2005',
+                clause: 'Section 6.3.2 — Impedance Trending',
+                threshold: '20-50% above average',
+                measured: `${cellsAbove20Pct.length} cells in warning zone`,
+                verdict: 'WARNING',
+                recommendations: [
+                    'Increase monitoring frequency to monthly for these cells',
+                    'Trend impedance to predict when 50% threshold will be reached',
+                    'Budget for cell replacement within 6-12 months'
+                ],
+                actions: ['Add flagged cells to enhanced monitoring program'],
+                reliabilityImpact: 'These cells are degrading and will likely require replacement within 6-12 months.'
+            });
+        }
+
+        // 4. TEMPERATURE CHECK — IEC 60896-11 Annex A / IEEE 450 Sec 4.3
+        const temps = readings.filter(r => r.temperature > 0).map(r => r.temperature);
+        if (temps.length > 0) {
+            const avgTemp = temps.reduce((a, b) => a + b, 0) / temps.length;
+            const maxTemp = Math.max(...temps);
+            if (maxTemp > 35) {
+                findings.push({
+                    severity: 'Warning',
+                    title: `Elevated Temperature (Max: ${maxTemp}°C)`,
+                    description: `Per IEC 60896-11 Annex A, battery life halves for every 8-10°C above 20°C reference. Maximum temperature of ${maxTemp}°C will significantly reduce design life.`,
+                    standard: 'IEC 60896-11',
+                    clause: 'Annex A — Effect of Temperature on Life',
+                    threshold: '20-25°C (IEEE 450 Sec 4.3)',
+                    measured: `Avg: ${avgTemp.toFixed(1)}°C, Max: ${maxTemp}°C`,
+                    verdict: 'WARNING',
+                    recommendations: [
+                        'Improve battery room HVAC/cooling',
+                        'Verify charger temperature compensation (-3mV/°C/cell)',
+                        'Install temperature monitoring system'
+                    ],
+                    actions: ['Review and upgrade cooling system within 90 days'],
+                    reliabilityImpact: `Estimated life reduction: ${((maxTemp - 20) / 10 * 50).toFixed(0)}% due to elevated temperature.`
+                });
+            } else {
+                findings.push({
+                    severity: 'Pass',
+                    title: 'Operating Temperature — PASS',
+                    description: `Temperature within acceptable range per IEEE 450-2010 Sec 4.3 and IEC 60896-11.`,
+                    standard: 'IEEE 450-2010 / IEC 60896-11',
+                    clause: 'IEEE 450 Sec 4.3 / IEC 60896 Annex A',
+                    threshold: '20-25°C recommended',
+                    measured: `Avg: ${avgTemp.toFixed(1)}°C, Max: ${maxTemp}°C`,
+                    verdict: 'PASS',
+                    recommendations: ['Continue ambient temperature monitoring'],
+                    actions: ['Maintain current environment'],
+                    reliabilityImpact: 'Temperature is nominal — no life reduction expected.'
+                });
+            }
+        }
+
+        // 5. OVERALL COMPLIANCE VERDICT — IEC 60896-21 / IEEE 1188
+        const criticalCount = findings.filter(f => f.severity === 'Critical').length;
+        const warningCount = findings.filter(f => f.severity === 'Warning').length;
+        const passCount = findings.filter(f => f.severity === 'Pass').length;
+
+        findings.push({
+            severity: criticalCount > 0 ? 'Critical' : warningCount > 0 ? 'Warning' : 'Pass',
+            title: 'Overall Compliance Assessment',
+            description: criticalCount > 0
+                ? `${criticalCount} critical finding(s) detected. Battery system is NON-COMPLIANT with IEEE/IEC standards. Immediate corrective action required.`
+                : warningCount > 0
+                    ? `${warningCount} warning(s) detected. Enhanced monitoring and corrective actions recommended per IEEE 1188-2005.`
+                    : `All ${passCount} checks passed. Battery system is COMPLIANT with IEEE 450-2010, IEEE 1188-2005, IEC 60896, and IS 1651 standards.`,
+            standard: 'IEEE 450-2010 / IEEE 1188-2005 / IEC 60896 / IS 1651',
+            clause: 'Comprehensive Assessment',
+            threshold: 'All parameters within standard limits',
+            measured: `${passCount} Pass, ${warningCount} Warning, ${criticalCount} Critical`,
+            verdict: criticalCount > 0 ? 'FAIL' : warningCount > 0 ? 'WARNING' : 'PASS',
+            recommendations: criticalCount > 0
+                ? ['Immediately address all critical findings', 'Increase inspection frequency to weekly', 'Plan battery replacement']
+                : warningCount > 0
+                    ? ['Address warning findings within 30 days', 'Increase inspection frequency to monthly']
+                    : ['Continue standard quarterly maintenance per IEEE 450/1188'],
+            actions: criticalCount > 0
+                ? ['Emergency maintenance review within 72 hours']
+                : ['Next scheduled inspection per maintenance calendar'],
+            reliabilityImpact: criticalCount > 0
+                ? 'System reliability is compromised. Risk of unplanned outage is elevated.'
+                : warningCount > 0
+                    ? 'System reliability is acceptable but degrading. Proactive action will prevent future failure.'
+                    : 'System reliability is at design level.'
+        });
+
+        return findings;
+    }, [data]);
+
     // --- EXPORT FUNCTIONS ---
     const exportToPDF = () => {
         if (!data) return;
@@ -186,6 +462,48 @@ export const FlukeDataViewer: React.FC = () => {
                 margin: { left: 14 },
             });
         }
+
+        // Standards Compliance Analysis Page
+        doc.addPage('landscape');
+        doc.setFontSize(14);
+        doc.setTextColor(30, 41, 59);
+        doc.text('Standards Compliance Analysis', 14, 18);
+        doc.setFontSize(9);
+        doc.setTextColor(100, 116, 139);
+        doc.text('IEEE 450-2010 | IEEE 1188-2005 | IEC 60896 | IEC 62485-2 | IS 1651:2013', 14, 24);
+
+        autoTable(doc, {
+            startY: 30,
+            head: [['Verdict', 'Finding', 'Standard & Clause', 'Threshold', 'Measured', 'Recommendations', 'Reliability Impact']],
+            body: standardsFindings.map(f => [
+                f.verdict,
+                f.title,
+                `${f.standard} — ${f.clause}`,
+                f.threshold,
+                f.measured,
+                f.recommendations.join('; '),
+                f.reliabilityImpact
+            ]),
+            theme: 'grid',
+            headStyles: { fillColor: [79, 70, 229], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
+            styles: { fontSize: 7, cellPadding: 2 },
+            columnStyles: {
+                0: { cellWidth: 15 },
+                1: { cellWidth: 40 },
+                5: { cellWidth: 55 },
+                6: { cellWidth: 45 }
+            },
+            margin: { left: 14 },
+            didParseCell: (hookData: any) => {
+                if (hookData.section === 'body' && hookData.column.index === 0) {
+                    const val = hookData.cell.raw;
+                    if (val === 'FAIL') hookData.cell.styles.textColor = [220, 38, 38];
+                    else if (val === 'WARNING') hookData.cell.styles.textColor = [245, 158, 11];
+                    else hookData.cell.styles.textColor = [16, 185, 129];
+                    hookData.cell.styles.fontStyle = 'bold';
+                }
+            },
+        });
 
         // Cell Data Table
         doc.addPage('landscape');
@@ -283,6 +601,23 @@ export const FlukeDataViewer: React.FC = () => {
             ws3['!cols'] = [{ wch: 10 }, { wch: 18 }, { wch: 15 }, { wch: 15 }, { wch: 18 }];
             XLSX.utils.book_append_sheet(wb, ws3, 'Outliers');
         }
+
+        // Sheet 4: Standards Compliance Analysis
+        const complianceHeaders = ['Verdict', 'Finding', 'Standard', 'Clause', 'Threshold', 'Measured', 'Recommendations', 'Action Items', 'Reliability Impact'];
+        const complianceRows = standardsFindings.map(f => [
+            f.verdict,
+            f.title,
+            f.standard,
+            f.clause,
+            f.threshold,
+            f.measured,
+            f.recommendations.join('\n'),
+            f.actions.join('\n'),
+            f.reliabilityImpact
+        ]);
+        const ws4 = XLSX.utils.aoa_to_sheet([complianceHeaders, ...complianceRows]);
+        ws4['!cols'] = [{ wch: 10 }, { wch: 35 }, { wch: 18 }, { wch: 30 }, { wch: 20 }, { wch: 25 }, { wch: 45 }, { wch: 35 }, { wch: 40 }];
+        XLSX.utils.book_append_sheet(wb, ws4, 'Standards Compliance');
 
         XLSX.writeFile(wb, `BatteryOn_${m.deviceName.replace(/\s+/g, '_')}_${m.timeCreated?.split(' ')[0] || 'report'}.xlsx`);
     };
@@ -506,6 +841,92 @@ export const FlukeDataViewer: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            {/* ═══════════ STANDARDS COMPLIANCE ANALYSIS ═══════════ */}
+            {standardsFindings.length > 0 && (
+                <div className="bg-white dark:bg-industrial-800 rounded-xl border border-slate-200 dark:border-industrial-700 shadow-sm overflow-hidden">
+                    <div className="px-5 py-4 border-b border-slate-200 dark:border-industrial-700 bg-gradient-to-r from-indigo-50 to-violet-50 dark:from-indigo-900/20 dark:to-violet-900/20">
+                        <h3 className="text-sm font-bold text-indigo-700 dark:text-indigo-400 uppercase tracking-wider flex items-center gap-2">
+                            <FileText className="w-4 h-4" /> Standards Compliance Analysis
+                        </h3>
+                        <p className="text-xs text-indigo-500 dark:text-indigo-400/70 mt-1">
+                            IEEE 450-2010 | IEEE 1188-2005 | IEC 60896 | IEC 62485-2 | IS 1651:2013
+                        </p>
+                    </div>
+                    <div className="p-5 space-y-4">
+                        {standardsFindings.map((finding, idx) => (
+                            <div key={idx} className={`rounded-lg border p-4 ${finding.verdict === 'FAIL' ? 'border-red-200 dark:border-red-800/50 bg-red-50/60 dark:bg-red-900/10' :
+                                finding.verdict === 'WARNING' ? 'border-amber-200 dark:border-amber-800/50 bg-amber-50/60 dark:bg-amber-900/10' :
+                                    'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/60 dark:bg-emerald-900/10'
+                                }`}>
+                                <div className="flex items-start justify-between gap-3 mb-3">
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider ${finding.verdict === 'FAIL' ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400' :
+                                                finding.verdict === 'WARNING' ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400' :
+                                                    'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400'
+                                                }`}>
+                                                {finding.verdict}
+                                            </span>
+                                            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">{finding.standard}</span>
+                                        </div>
+                                        <h4 className={`text-sm font-bold ${finding.verdict === 'FAIL' ? 'text-red-700 dark:text-red-400' :
+                                            finding.verdict === 'WARNING' ? 'text-amber-700 dark:text-amber-400' :
+                                                'text-emerald-700 dark:text-emerald-400'
+                                            }`}>{finding.title}</h4>
+                                    </div>
+                                </div>
+                                <p className="text-xs text-slate-600 dark:text-slate-400 mb-3 leading-relaxed">{finding.description}</p>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3 text-xs">
+                                    <div className="bg-white/60 dark:bg-industrial-900/40 rounded px-3 py-2">
+                                        <span className="font-bold text-slate-500 dark:text-slate-400 uppercase text-[10px]">Standard & Clause</span>
+                                        <p className="text-slate-700 dark:text-slate-300 font-medium mt-0.5">{finding.clause}</p>
+                                    </div>
+                                    <div className="bg-white/60 dark:bg-industrial-900/40 rounded px-3 py-2">
+                                        <span className="font-bold text-slate-500 dark:text-slate-400 uppercase text-[10px]">Threshold</span>
+                                        <p className="text-slate-700 dark:text-slate-300 font-medium mt-0.5">{finding.threshold}</p>
+                                    </div>
+                                    <div className="bg-white/60 dark:bg-industrial-900/40 rounded px-3 py-2">
+                                        <span className="font-bold text-slate-500 dark:text-slate-400 uppercase text-[10px]">Measured</span>
+                                        <p className="text-slate-700 dark:text-slate-300 font-medium mt-0.5">{finding.measured}</p>
+                                    </div>
+                                </div>
+
+                                {(finding.verdict !== 'PASS') && (
+                                    <>
+                                        <div className="mb-2">
+                                            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Recommendations</span>
+                                            <ul className="mt-1 space-y-1">
+                                                {finding.recommendations.map((rec, i) => (
+                                                    <li key={i} className="text-xs text-slate-600 dark:text-slate-400 flex items-start gap-1.5">
+                                                        <span className="text-amber-500 mt-0.5">▸</span> {rec}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                        <div className="mb-2">
+                                            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Action Items</span>
+                                            <ul className="mt-1 space-y-1">
+                                                {finding.actions.map((act, i) => (
+                                                    <li key={i} className="text-xs text-slate-600 dark:text-slate-400 flex items-start gap-1.5">
+                                                        <span className="text-blue-500 mt-0.5">◆</span> {act}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    </>
+                                )}
+
+                                <div className="mt-2 pt-2 border-t border-slate-200/50 dark:border-industrial-700/50">
+                                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">Reliability Impact: </span>
+                                    <span className="text-xs text-slate-600 dark:text-slate-400">{finding.reliabilityImpact}</span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Outlier Alerts */}
             {outliers.length > 0 && (
